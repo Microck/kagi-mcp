@@ -63,6 +63,18 @@ struct SearchArgs {
     /// Optional Kagi lens index.
     #[serde(default)]
     lens: Option<String>,
+    /// Optional region code (e.g., "us", "gb", "no_region").
+    #[serde(default)]
+    region: Option<String>,
+    /// Optional time filter (day, week, month, year).
+    #[serde(default)]
+    time: Option<String>,
+    /// Optional order (default, recency, website, trackers).
+    #[serde(default)]
+    order: Option<String>,
+    /// Optional output format (json, pretty, compact, markdown, csv).
+    #[serde(default)]
+    format: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -145,6 +157,77 @@ struct SmallWebArgs {
     /// Maximum number of feed entries.
     #[serde(default)]
     limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct QuickArgs {
+    /// Query to get a quick answer for.
+    query: String,
+    /// Optional output format (json, pretty, compact, markdown).
+    #[serde(default)]
+    format: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct TranslateArgs {
+    /// Text to translate.
+    text: String,
+    /// Source language code (default: auto).
+    #[serde(default)]
+    from: Option<String>,
+    /// Target language code (default: en).
+    #[serde(default)]
+    to: Option<String>,
+    /// Skip alternative translations.
+    #[serde(default)]
+    no_alternatives: Option<bool>,
+    /// Skip word insights.
+    #[serde(default)]
+    no_word_insights: Option<bool>,
+    /// Skip suggestions.
+    #[serde(default)]
+    no_suggestions: Option<bool>,
+    /// Skip alignments.
+    #[serde(default)]
+    no_alignments: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct BatchArgs {
+    /// Search queries to run in parallel.
+    queries: Vec<String>,
+    /// Maximum concurrent requests (default: 3).
+    #[serde(default)]
+    concurrency: Option<u32>,
+    /// Rate limit in requests per minute (default: 60).
+    #[serde(default)]
+    rate_limit: Option<u32>,
+    /// Optional output format (json, pretty, compact, markdown, csv).
+    #[serde(default)]
+    format: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct AskPageArgs {
+    /// URL of the page to ask about.
+    url: String,
+    /// Question to ask about the page.
+    question: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct ThreadIdArgs {
+    /// Assistant thread ID.
+    thread_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct ThreadExportArgs {
+    /// Assistant thread ID.
+    thread_id: String,
+    /// Export format (markdown, json).
+    #[serde(default)]
+    format: Option<String>,
 }
 
 #[derive(Clone)]
@@ -364,6 +447,67 @@ impl KagiServer {
     async fn kagi_auth_check(&self) -> Result<CallToolResult, McpError> {
         Ok(self.execute(auth_check()).await)
     }
+
+    #[tool(description = "Get a quick answer with references from Kagi.")]
+    async fn kagi_quick(
+        &self,
+        Parameters(args): Parameters<QuickArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(quick(args)).await)
+    }
+
+    #[tool(description = "Translate text through Kagi Translate.")]
+    async fn kagi_translate(
+        &self,
+        Parameters(args): Parameters<TranslateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(translate(args)).await)
+    }
+
+    #[tool(description = "Run multiple searches in parallel with rate limiting.")]
+    async fn kagi_batch(
+        &self,
+        Parameters(args): Parameters<BatchArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(batch(args)).await)
+    }
+
+    #[tool(description = "Ask Kagi Assistant about a specific web page.")]
+    async fn kagi_ask_page(
+        &self,
+        Parameters(args): Parameters<AskPageArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(ask_page(args)).await)
+    }
+
+    #[tool(description = "List Assistant conversation threads.")]
+    async fn kagi_assistant_thread_list(&self) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(assistant_thread_list()).await)
+    }
+
+    #[tool(description = "Get an Assistant thread by ID.")]
+    async fn kagi_assistant_thread_get(
+        &self,
+        Parameters(args): Parameters<ThreadIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(assistant_thread_get(args)).await)
+    }
+
+    #[tool(description = "Export an Assistant thread to markdown or JSON.")]
+    async fn kagi_assistant_thread_export(
+        &self,
+        Parameters(args): Parameters<ThreadExportArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(assistant_thread_export(args)).await)
+    }
+
+    #[tool(description = "Delete an Assistant thread.")]
+    async fn kagi_assistant_thread_delete(
+        &self,
+        Parameters(args): Parameters<ThreadIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(assistant_thread_delete(args)).await)
+    }
 }
 
 #[tool_handler]
@@ -383,6 +527,10 @@ impl ServerHandler for KagiServer {
 fn search(args: SearchArgs) -> CommandSpec {
     let mut argv = vec!["search".to_string(), args.query];
     push_opt_value(&mut argv, "--lens", args.lens);
+    push_opt_value(&mut argv, "--region", args.region);
+    push_opt_value(&mut argv, "--time", args.time);
+    push_opt_value(&mut argv, "--order", args.order);
+    push_opt_value(&mut argv, "--format", args.format);
     CommandSpec {
         args: argv,
         output_mode: OutputMode::Json,
@@ -499,6 +647,86 @@ fn auth_check() -> CommandSpec {
     }
 }
 
+fn quick(args: QuickArgs) -> CommandSpec {
+    let mut argv = vec!["quick".to_string(), args.query];
+    push_opt_value(&mut argv, "--format", args.format);
+    CommandSpec {
+        args: argv,
+        output_mode: OutputMode::Json,
+    }
+}
+
+fn translate(args: TranslateArgs) -> CommandSpec {
+    let mut argv = vec!["translate".to_string(), args.text];
+    push_opt_value(&mut argv, "--from", args.from);
+    push_opt_value(&mut argv, "--to", args.to);
+    if args.no_alternatives.unwrap_or(false) {
+        argv.push("--no-alternatives".to_string());
+    }
+    if args.no_word_insights.unwrap_or(false) {
+        argv.push("--no-word-insights".to_string());
+    }
+    if args.no_suggestions.unwrap_or(false) {
+        argv.push("--no-suggestions".to_string());
+    }
+    if args.no_alignments.unwrap_or(false) {
+        argv.push("--no-alignments".to_string());
+    }
+    CommandSpec {
+        args: argv,
+        output_mode: OutputMode::Json,
+    }
+}
+
+fn batch(args: BatchArgs) -> CommandSpec {
+    let mut argv = vec!["batch".to_string()];
+    argv.extend(args.queries);
+    push_opt_u32(&mut argv, "--concurrency", args.concurrency);
+    push_opt_u32(&mut argv, "--rate-limit", args.rate_limit);
+    push_opt_value(&mut argv, "--format", args.format);
+    CommandSpec {
+        args: argv,
+        output_mode: OutputMode::Json,
+    }
+}
+
+fn ask_page(args: AskPageArgs) -> CommandSpec {
+    CommandSpec {
+        args: vec!["ask-page".to_string(), args.url, args.question],
+        output_mode: OutputMode::Json,
+    }
+}
+
+fn assistant_thread_list() -> CommandSpec {
+    CommandSpec {
+        args: vec!["assistant".to_string(), "thread".to_string(), "list".to_string()],
+        output_mode: OutputMode::Json,
+    }
+}
+
+fn assistant_thread_get(args: ThreadIdArgs) -> CommandSpec {
+    CommandSpec {
+        args: vec!["assistant".to_string(), "thread".to_string(), "get".to_string(), args.thread_id],
+        output_mode: OutputMode::Json,
+    }
+}
+
+fn assistant_thread_export(args: ThreadExportArgs) -> CommandSpec {
+    let mut argv = vec!["assistant".to_string(), "thread".to_string(), "export".to_string(), args.thread_id];
+    push_opt_value(&mut argv, "--format", args.format);
+    CommandSpec {
+        args: argv,
+        output_mode: OutputMode::Json,
+    }
+}
+
+fn assistant_thread_delete(args: ThreadIdArgs) -> CommandSpec {
+    CommandSpec {
+        args: vec!["assistant".to_string(), "thread".to_string(), "delete".to_string(), args.thread_id],
+        output_mode: OutputMode::Json,
+    }
+}
+
 fn push_opt_value(argv: &mut Vec<String>, flag: &str, value: Option<String>) {
     if let Some(value) = value {
         argv.push(flag.to_string());
@@ -555,6 +783,10 @@ mod tests {
         let spec = search(SearchArgs {
             query: "rust".to_string(),
             lens: Some("2".to_string()),
+            region: None,
+            time: None,
+            order: None,
+            format: None,
         });
 
         assert_eq!(
