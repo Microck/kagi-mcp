@@ -1,28 +1,32 @@
 # kagi-mcp
 
-`kagi-mcp` is a tiny MCP server built on top of [`kagi-cli`](https://github.com/Microck/kagi-cli).
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-It is intentionally just an extra repo:
+`kagi-mcp` is a tiny MCP server that wraps [`kagi-cli`](https://github.com/Microck/kagi-cli). It exposes every CLI command as an MCP tool, returning the same JSON the CLI already emits — no reimplementation of Kagi logic.
 
-- separate repo
-- one Rust binary
-- wraps the `kagi` CLI instead of reimplementing Kagi logic
-- returns the same JSON the CLI already emits
+```
+┌──────────┐    stdio    ┌───────────┐    subprocess    ┌─────────┐
+│  Claude  │ ◄────────► │ kagi-mcp  │ ◄──────────────► │ kagi    │
+│  Desktop │             │ (Rust)    │                  │ CLI     │
+└──────────┘             └───────────┘                  └─────────┘
+```
 
 ## Requirements
 
-- A working `kagi` binary on `PATH`, or `KAGI_CLI_PATH` pointing to it
-- Kagi credentials provided through environment variables
-  - `KAGI_SESSION_TOKEN` - for subscriber features (search, quick, assistant, translate, etc.)
-  - `KAGI_API_TOKEN` - for paid API features (summarize, fastgpt, enrich)
+- A working [`kagi`](https://github.com/Microck/kagi-cli) binary on `PATH`, or `KAGI_CLI_PATH` pointing to it
+- Kagi credentials via environment variables:
+  - `KAGI_SESSION_TOKEN` — subscriber features (search, quick, assistant, translate)
+  - `KAGI_API_TOKEN` — paid API features (summarize, fastgpt, enrich)
 
-`.kagi.toml` is not the recommended auth path for MCP usage because the CLI resolves it relative to the server process working directory.
+> `.kagi.toml` is not recommended for MCP usage because the CLI resolves it relative to the server process working directory.
 
 ## Build
 
 ```bash
 cargo build --release
 ```
+
+The binary is at `./target/release/kagi-mcp`.
 
 ## Run
 
@@ -33,10 +37,12 @@ KAGI_API_TOKEN=... \
 ./target/release/kagi-mcp
 ```
 
-Optional:
+Optional environment variables:
 
-- `KAGI_CLI_PATH`: explicit path to the `kagi` binary
-- `KAGI_MCP_TIMEOUT_MS`: subprocess timeout in milliseconds, default `30000`
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KAGI_CLI_PATH` | `"kagi"` (from PATH) | Path to the `kagi` binary |
+| `KAGI_MCP_TIMEOUT_MS` | `30000` | Subprocess timeout in milliseconds |
 
 ## Claude Desktop
 
@@ -59,52 +65,52 @@ Optional:
 
 ### Search
 
-- `kagi_search` - Search Kagi with optional lens, region, time, and order filters
-- `kagi_batch` - Run multiple searches in parallel with rate limiting
+- `kagi_search` — Search Kagi with optional lens, region, time, and order filters
+- `kagi_batch` — Run multiple searches in parallel with rate limiting
 
 ### Quick Answer
 
-- `kagi_quick` - Get a direct answer with references instead of search results
+- `kagi_quick` — Get a direct answer with references instead of search results
 
 ### Assistant
 
-- `kagi_assistant` - Prompt Kagi Assistant, optionally continue an existing thread
-- `kagi_ask_page` - Ask Kagi Assistant about a specific web page
-- `kagi_assistant_thread_list` - List all Assistant threads
-- `kagi_assistant_thread_get` - Get a specific thread by ID
-- `kagi_assistant_thread_export` - Export a thread to markdown or JSON
-- `kagi_assistant_thread_delete` - Delete a thread
+- `kagi_assistant` — Prompt Kagi Assistant, optionally continue an existing thread
+- `kagi_ask_page` — Ask Kagi Assistant about a specific web page
+- `kagi_assistant_thread_list` — List all Assistant threads
+- `kagi_assistant_thread_get` — Get a specific thread by ID
+- `kagi_assistant_thread_export` — Export a thread to markdown or JSON
+- `kagi_assistant_thread_delete` — Delete a thread
 
 ### Translate
 
-- `kagi_translate` - Translate text with auto-detection, alternatives, and word insights
+- `kagi_translate` — Translate text with auto-detection, alternatives, and word insights
 
 ### Summarize
 
-- `kagi_summarize` - Summarize URLs or text (subscriber or API mode)
+- `kagi_summarize` — Summarize URLs or text (subscriber or API mode)
 
 ### News
 
-- `kagi_news` - Fetch Kagi News stories by category
-- `kagi_news_categories` - List available news categories
-- `kagi_news_chaos` - Get the current Kagi News chaos index
+- `kagi_news` — Fetch Kagi News stories by category
+- `kagi_news_categories` — List available news categories
+- `kagi_news_chaos` — Get the current Kagi News chaos index
 
 ### Enrichment
 
-- `kagi_enrich_web` - Query Kagi web enrichment index
-- `kagi_enrich_news` - Query Kagi news enrichment index
+- `kagi_enrich_web` — Query Kagi web enrichment index
+- `kagi_enrich_news` — Query Kagi news enrichment index
 
 ### Other
 
-- `kagi_smallweb` - Fetch the Kagi Small Web feed
-- `kagi_fastgpt` - Quick factual answers through the paid API
-- `kagi_auth_status` - Show which credentials are configured
-- `kagi_auth_check` - Validate configured credentials
+- `kagi_smallweb` — Fetch the Kagi Small Web feed
+- `kagi_fastgpt` — Quick factual answers through the paid API
+- `kagi_auth_status` — Show which credentials are configured
+- `kagi_auth_check` — Validate configured credentials
 
 ## Auth Model
 
 | Tool | Session Token | API Token | None |
-|------|---------------|-----------|------|
+|------|:---:|:---:|:---:|
 | `kagi_search` | ✓ | ✓ | |
 | `kagi_search --lens` | ✓ | | |
 | `kagi_quick` | ✓ | | |
@@ -124,3 +130,7 @@ Optional:
 ```bash
 cargo test
 ```
+
+## License
+
+MIT
