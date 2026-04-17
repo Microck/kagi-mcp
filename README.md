@@ -1,17 +1,21 @@
 # kagi-mcp
 
+[![license: MIT](https://img.shields.io/badge/license-MIT-000?style=flat-square)](LICENSE) [![rust: 1.85+](https://img.shields.io/badge/rust-1.85%2B-000?style=flat-square)](Cargo.toml)
+
 `kagi-mcp` is a tiny MCP server built on top of [`kagi-cli`](https://github.com/Microck/kagi-cli).
 
 It is intentionally just an extra repo:
 
-- separate repo
-- one Rust binary
+- one Rust binary, no runtime deps beyond the `kagi` CLI
 - wraps the `kagi` CLI instead of reimplementing Kagi logic
 - returns the same JSON the CLI already emits
+- configurable subprocess timeout
+- 20 tools across search, assistant, translate, summarize, news, and enrichment
 
 ## Requirements
 
-- A working `kagi` binary on `PATH`, or `KAGI_CLI_PATH` pointing to it
+- **Rust 1.85+** (uses `edition = "2024"`)
+- A working [`kagi`](https://github.com/Microck/kagi-cli) binary on `PATH`, or `KAGI_CLI_PATH` pointing to it
 - Kagi credentials provided through environment variables
   - `KAGI_SESSION_TOKEN` — for subscriber features (search, quick, assistant, translate, etc.)
   - `KAGI_API_TOKEN` — for paid API features (summarize, fastgpt, enrich)
