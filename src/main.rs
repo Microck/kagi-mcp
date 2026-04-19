@@ -3,7 +3,7 @@ use std::{env, error::Error, path::PathBuf, time::Duration};
 use rmcp::{
     ErrorData as McpError, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::*,
+    model::{CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
     transport::stdio,
 };
@@ -63,7 +63,7 @@ struct SearchArgs {
     /// Optional Kagi lens index.
     #[serde(default)]
     lens: Option<String>,
-    /// Optional region code (e.g., "us", "gb", "no_region").
+    /// Optional region code (e.g., "us", "gb", `no_region`).
     #[serde(default)]
     region: Option<String>,
     /// Optional time filter (day, week, month, year).
@@ -136,7 +136,7 @@ struct AssistantArgs {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
 struct FastGptArgs {
-    /// Prompt to send to FastGPT.
+    /// Prompt to send to `FastGPT`.
     query: String,
     /// Allow cached responses.
     #[serde(default)]
@@ -152,7 +152,7 @@ struct EnrichArgs {
     query: String,
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq)]
 struct SmallWebArgs {
     /// Maximum number of feed entries.
     #[serde(default)]
@@ -255,8 +255,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 impl CliRunner {
     fn from_env() -> Result<Self, RunnerError> {
         let cli_path = env::var(CLI_PATH_ENV)
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("kagi"));
+            .map_or_else(|_| PathBuf::from("kagi"), PathBuf::from);
         let timeout = match env::var(TIMEOUT_ENV) {
             Ok(raw) => {
                 let value = raw.parse::<u64>().map_err(|_| {
@@ -300,7 +299,7 @@ impl CliRunner {
             .await
             .map_err(|_| RunnerError::Timeout {
                 path: path_display.clone(),
-                timeout_ms: self.timeout.as_millis() as u64,
+                timeout_ms: self.timeout.as_millis() as u64, // SAFETY: constructed from u64
             })?
             .map_err(|error| RunnerError::Spawn {
                 path: path_display.clone(),
