@@ -1284,16 +1284,18 @@ mod tests {
 
     fn write_fixture(dir: &Path, body: &str) -> PathBuf {
         let path = dir.join("kagi");
-        let mut file = fs::File::create(&path).expect("fixture script should create");
+        let tmp_path = dir.join("kagi.tmp");
+        let mut file = fs::File::create(&tmp_path).expect("fixture script should create");
         file.write_all(body.as_bytes())
             .expect("fixture script should write");
         file.sync_all().expect("fixture script should sync");
         drop(file);
-        let mut perms = fs::metadata(&path)
+        let mut perms = fs::metadata(&tmp_path)
             .expect("fixture metadata should exist")
             .permissions();
         perms.set_mode(0o755);
-        fs::set_permissions(&path, perms).expect("fixture should be executable");
+        fs::set_permissions(&tmp_path, perms).expect("fixture should be executable");
+        fs::rename(&tmp_path, &path).expect("fixture should move into place");
         path
     }
 
