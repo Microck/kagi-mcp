@@ -22,6 +22,7 @@ const TIMEOUT_ENV: &str = "KAGI_MCP_TIMEOUT_MS";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OutputMode {
     Json,
+    Toon,
     Text,
 }
 
@@ -42,6 +43,7 @@ struct CliRunner {
 #[derive(Debug, Clone, PartialEq)]
 enum CommandOutput {
     Json(Value),
+    Toon(String),
     Text(String),
 }
 
@@ -105,7 +107,7 @@ struct SearchArgs {
     /// Override local cache TTL in seconds.
     #[serde(default)]
     cache_ttl: Option<u64>,
-    /// Optional output format (json, pretty, compact, markdown, csv).
+    /// Optional output format (toon, json, pretty, compact, markdown, csv).
     #[serde(default)]
     format: Option<String>,
 }
@@ -195,7 +197,7 @@ struct AssistantArgs {
     /// Saved assistant name, id, or invoke profile slug.
     #[serde(default)]
     assistant: Option<String>,
-    /// Output format (json, pretty, compact, markdown).
+    /// Output format (toon, json, pretty, compact, markdown).
     #[serde(default)]
     format: Option<String>,
     /// Override the Assistant model slug.
@@ -253,7 +255,7 @@ struct SmallWebArgs {
 struct QuickArgs {
     /// Query to get a quick answer for.
     query: String,
-    /// Optional output format (json, pretty, compact, markdown).
+    /// Optional output format (toon, json, pretty, compact, markdown).
     #[serde(default)]
     format: Option<String>,
     /// Scope quick answer to a Kagi lens by numeric index.
@@ -353,7 +355,7 @@ struct BatchArgs {
     /// Rate limit in requests per minute (default: 60).
     #[serde(default)]
     rate_limit: Option<u32>,
-    /// Optional output format (json, pretty, compact, markdown, csv).
+    /// Optional output format (toon, json, pretty, compact, markdown, csv).
     #[serde(default)]
     format: Option<String>,
     /// Optional Snap shortcut prefix for every query.
@@ -524,10 +526,22 @@ impl CliRunner {
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
 
-        let mut child = command.spawn().map_err(|error| RunnerError::Spawn {
-            path: path_display.clone(),
-            message: error.to_string(),
-        })?;
+        let mut spawn_attempts = 0;
+        let mut child = loop {
+            match command.spawn() {
+                Ok(child) => break child,
+                Err(error) if error.raw_os_error() == Some(26) && spawn_attempts < 5 => {
+                    spawn_attempts += 1;
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                Err(error) => {
+                    return Err(RunnerError::Spawn {
+                        path: path_display.clone(),
+                        message: error.to_string(),
+                    });
+                }
+            }
+        };
 
         if let Some(stdin) = spec.stdin {
             let mut child_stdin = child.stdin.take().ok_or_else(|| RunnerError::Spawn {
@@ -581,6 +595,11 @@ impl CliRunner {
                     .map_err(|error| RunnerError::Parse(error.to_string()))?;
                 Ok(CommandOutput::Json(value))
             }
+            OutputMode::Toon => {
+                let value: Value = serde_json::from_str(&stdout)
+                    .map_err(|error| RunnerError::Parse(error.to_string()))?;
+                Ok(CommandOutput::Toon(toon::encode(&value, None)))
+            }
             OutputMode::Text => Ok(CommandOutput::Text(stdout)),
         }
     }
@@ -597,6 +616,7 @@ impl KagiServer {
     async fn execute(&self, spec: CommandSpec) -> CallToolResult {
         match self.runner.run(spec).await {
             Ok(CommandOutput::Json(value)) => json_tool_result(value),
+            Ok(CommandOutput::Toon(text)) => CallToolResult::success(vec![Content::text(text)]),
             Ok(CommandOutput::Text(text)) => CallToolResult::success(vec![Content::text(text)]),
             Err(error) => CallToolResult::error(vec![Content::text(error.to_string())]),
         }
@@ -605,7 +625,9 @@ impl KagiServer {
 
 #[tool_router]
 impl KagiServer {
-    #[tool(description = "Search Kagi and return the CLI JSON response.")]
+    #[tool(
+        description = "Search Kagi and return TOON by default. Pass format=json for structured JSON."
+    )]
     async fn kagi_search(
         &self,
         Parameters(args): Parameters<SearchArgs>,
@@ -621,7 +643,7 @@ impl KagiServer {
         Ok(self.execute(summarize(args)).await)
     }
 
-    #[tool(description = "Fetch Kagi News stories.")]
+    #[tool(description = "Fetch Kagi News stories as TOON.")]
     async fn kagi_news(
         &self,
         Parameters(args): Parameters<NewsArgs>,
@@ -629,7 +651,7 @@ impl KagiServer {
         Ok(self.execute(news(args)).await)
     }
 
-    #[tool(description = "List Kagi News categories.")]
+    #[tool(description = "List Kagi News categories as TOON.")]
     async fn kagi_news_categories(
         &self,
         Parameters(args): Parameters<LangArgs>,
@@ -637,7 +659,7 @@ impl KagiServer {
         Ok(self.execute(news_categories(args)).await)
     }
 
-    #[tool(description = "Fetch the Kagi News chaos index.")]
+    #[tool(description = "Fetch the Kagi News chaos index as TOON.")]
     async fn kagi_news_chaos(
         &self,
         Parameters(args): Parameters<LangArgs>,
@@ -645,7 +667,9 @@ impl KagiServer {
         Ok(self.execute(news_chaos(args)).await)
     }
 
-    #[tool(description = "Prompt Kagi Assistant.")]
+    #[tool(
+        description = "Prompt Kagi Assistant and return TOON by default. Pass format=json for structured JSON."
+    )]
     async fn kagi_assistant(
         &self,
         Parameters(args): Parameters<AssistantArgs>,
@@ -653,7 +677,7 @@ impl KagiServer {
         Ok(self.execute(assistant(args)).await)
     }
 
-    #[tool(description = "Prompt Kagi FastGPT.")]
+    #[tool(description = "Prompt Kagi FastGPT as TOON.")]
     async fn kagi_fastgpt(
         &self,
         Parameters(args): Parameters<FastGptArgs>,
@@ -798,8 +822,10 @@ impl ServerHandler for KagiServer {
             .with_server_info(Implementation::from_build_env())
             .with_protocol_version(ProtocolVersion::LATEST)
             .with_instructions(
-                "This server wraps the external `kagi` CLI from kagi-cli. Tool results mirror \
-                 the CLI output. Pass Kagi credentials through environment variables."
+                "This server wraps the external `kagi` CLI from kagi-cli. Structured tool results \
+                 default to TOON text for token-efficient model context; pass format=json on \
+                 supported tools when structured MCP content is required. Pass Kagi credentials \
+                 through environment variables."
                     .to_string(),
             )
     }
@@ -854,7 +880,7 @@ fn summarize(args: SummarizeArgs) -> CommandSpec {
     CommandSpec {
         args: argv,
         stdin,
-        output_mode: OutputMode::Json,
+        output_mode: OutputMode::Toon,
     }
 }
 
@@ -869,21 +895,21 @@ fn news(args: NewsArgs) -> CommandSpec {
     push_opt_value(&mut argv, "--filter-mode", args.filter_mode);
     push_opt_value(&mut argv, "--filter-scope", args.filter_scope);
 
-    command_spec(argv, OutputMode::Json)
+    command_spec(argv, OutputMode::Toon)
 }
 
 fn news_categories(args: LangArgs) -> CommandSpec {
     let mut argv = vec!["news".to_string(), "--list-categories".to_string()];
     push_opt_value(&mut argv, "--lang", args.lang);
 
-    command_spec(argv, OutputMode::Json)
+    command_spec(argv, OutputMode::Toon)
 }
 
 fn news_chaos(args: LangArgs) -> CommandSpec {
     let mut argv = vec!["news".to_string(), "--chaos".to_string()];
     push_opt_value(&mut argv, "--lang", args.lang);
 
-    command_spec(argv, OutputMode::Json)
+    command_spec(argv, OutputMode::Toon)
 }
 
 fn assistant(args: AssistantArgs) -> CommandSpec {
@@ -910,20 +936,20 @@ fn fastgpt(args: FastGptArgs) -> CommandSpec {
     push_opt_flag(&mut argv, "--local-cache", args.local_cache);
     push_opt_u64(&mut argv, "--cache-ttl", args.cache_ttl);
 
-    command_spec(argv, OutputMode::Json)
+    command_spec(argv, OutputMode::Toon)
 }
 
 fn enrich_web(args: EnrichArgs) -> CommandSpec {
     command_spec(
         vec!["enrich".to_string(), "web".to_string(), args.query],
-        OutputMode::Json,
+        OutputMode::Toon,
     )
 }
 
 fn enrich_news(args: EnrichArgs) -> CommandSpec {
     command_spec(
         vec!["enrich".to_string(), "news".to_string(), args.query],
-        OutputMode::Json,
+        OutputMode::Toon,
     )
 }
 
@@ -931,7 +957,7 @@ fn smallweb(args: SmallWebArgs) -> CommandSpec {
     let mut argv = vec!["smallweb".to_string()];
     push_opt_u32(&mut argv, "--limit", args.limit);
 
-    command_spec(argv, OutputMode::Json)
+    command_spec(argv, OutputMode::Toon)
 }
 
 fn auth_status() -> CommandSpec {
@@ -998,7 +1024,7 @@ fn translate(args: TranslateArgs) -> CommandSpec {
     if args.no_alignments.unwrap_or(false) {
         argv.push("--no-alignments".to_string());
     }
-    command_spec(argv, OutputMode::Json)
+    command_spec(argv, OutputMode::Toon)
 }
 
 fn batch(args: BatchArgs) -> CommandSpec {
@@ -1038,7 +1064,7 @@ fn batch(args: BatchArgs) -> CommandSpec {
 fn ask_page(args: AskPageArgs) -> CommandSpec {
     command_spec(
         vec!["ask-page".to_string(), args.url, args.question],
-        OutputMode::Json,
+        OutputMode::Toon,
     )
 }
 
@@ -1049,7 +1075,7 @@ fn assistant_thread_list() -> CommandSpec {
             "thread".to_string(),
             "list".to_string(),
         ],
-        OutputMode::Json,
+        OutputMode::Toon,
     )
 }
 
@@ -1061,7 +1087,7 @@ fn assistant_thread_get(args: ThreadIdArgs) -> CommandSpec {
             "get".to_string(),
             args.thread_id,
         ],
-        OutputMode::Json,
+        OutputMode::Toon,
     )
 }
 
@@ -1073,7 +1099,7 @@ fn assistant_thread_export(args: ThreadExportArgs) -> CommandSpec {
         args.thread_id,
     ];
     push_opt_value(&mut argv, "--format", args.format);
-    command_spec(argv, OutputMode::Json)
+    command_spec(argv, OutputMode::Toon)
 }
 
 fn assistant_thread_delete(args: ThreadIdArgs) -> CommandSpec {
@@ -1084,27 +1110,27 @@ fn assistant_thread_delete(args: ThreadIdArgs) -> CommandSpec {
             "delete".to_string(),
             args.thread_id,
         ],
-        OutputMode::Json,
+        OutputMode::Toon,
     )
 }
 
 fn history_list(args: HistoryListArgs) -> CommandSpec {
     let mut argv = vec!["history".to_string(), "list".to_string()];
     push_opt_u32(&mut argv, "--limit", args.limit);
-    command_spec(argv, OutputMode::Json)
+    command_spec(argv, OutputMode::Toon)
 }
 
 fn history_stats() -> CommandSpec {
     command_spec(
         vec!["history".to_string(), "stats".to_string()],
-        OutputMode::Json,
+        OutputMode::Toon,
     )
 }
 
 fn site_pref_list() -> CommandSpec {
     command_spec(
         vec!["site-pref".to_string(), "list".to_string()],
-        OutputMode::Json,
+        OutputMode::Toon,
     )
 }
 
@@ -1117,14 +1143,14 @@ fn site_pref_set(args: SitePrefSetArgs) -> CommandSpec {
             "--mode".to_string(),
             args.mode,
         ],
-        OutputMode::Json,
+        OutputMode::Toon,
     )
 }
 
 fn site_pref_remove(args: SitePrefDomainArgs) -> CommandSpec {
     command_spec(
         vec!["site-pref".to_string(), "remove".to_string(), args.domain],
-        OutputMode::Json,
+        OutputMode::Toon,
     )
 }
 
@@ -1179,6 +1205,8 @@ fn push_repeated_value(argv: &mut Vec<String>, flag: &str, values: Vec<String>) 
 
 fn output_mode_for_format(format: Option<&str>) -> OutputMode {
     match format {
+        None | Some("toon") => OutputMode::Toon,
+        Some("json" | "compact") => OutputMode::Json,
         Some("pretty" | "markdown" | "csv") => OutputMode::Text,
         _ => OutputMode::Json,
     }
@@ -1309,7 +1337,7 @@ mod tests {
             CommandSpec {
                 args: strings(&["search", "rust", "--lens", "2"]),
                 stdin: None,
-                output_mode: OutputMode::Json,
+                output_mode: OutputMode::Toon,
             }
         );
     }
@@ -1376,7 +1404,7 @@ mod tests {
                     "--filter"
                 ]),
                 stdin: Some("https://example.com/a\nplain text\n".to_string()),
-                output_mode: OutputMode::Json,
+                output_mode: OutputMode::Toon,
             }
         );
     }
@@ -1456,7 +1484,7 @@ mod tests {
             CommandSpec {
                 args: strings(&["history", "list", "--limit", "5"]),
                 stdin: None,
-                output_mode: OutputMode::Json,
+                output_mode: OutputMode::Toon,
             }
         );
         assert_eq!(
@@ -1464,7 +1492,7 @@ mod tests {
             CommandSpec {
                 args: strings(&["history", "stats"]),
                 stdin: None,
-                output_mode: OutputMode::Json,
+                output_mode: OutputMode::Toon,
             }
         );
         assert_eq!(
@@ -1475,7 +1503,7 @@ mod tests {
             CommandSpec {
                 args: strings(&["site-pref", "set", "example.com", "--mode", "higher"]),
                 stdin: None,
-                output_mode: OutputMode::Json,
+                output_mode: OutputMode::Toon,
             }
         );
     }
@@ -1611,5 +1639,12 @@ fi
         assert_eq!(result.is_error, Some(false));
         assert_eq!(result.structured_content, Some(value));
         assert_eq!(result.content.len(), 1);
+    }
+
+    #[test]
+    fn default_format_mode_is_toon() {
+        assert_eq!(output_mode_for_format(None), OutputMode::Toon);
+        assert_eq!(output_mode_for_format(Some("toon")), OutputMode::Toon);
+        assert_eq!(output_mode_for_format(Some("json")), OutputMode::Json);
     }
 }
