@@ -7,7 +7,8 @@ It is intentionally just an extra repo:
 - separate repo
 - one Rust binary
 - wraps the `kagi` CLI instead of reimplementing Kagi logic
-- returns the same JSON the CLI already emits
+- returns TOON by default for structured tool results
+- keeps `format=json` available on tools that support CLI format selection
 
 `kagi-cli` v0.5.0 also ships a native `kagi mcp` command. Use that when you only need the minimal built-in tools (`kagi_search`, `kagi_summarize`, and `kagi_quick`). Use this repo when you want the broader CLI surface exposed to agents, including Assistant, News, Translate, enrichment, local history, and local site preferences.
 
@@ -166,7 +167,7 @@ MCP Client (Claude, Zed, etc.)
 +-----------------+                +-----------+
 ```
 
-The server is a single Rust binary that spawns `kagi` CLI subprocesses for each tool call. JSON output is parsed and forwarded to the MCP client. Text output is passed through as-is.
+The server is a single Rust binary that spawns `kagi` CLI subprocesses for each tool call. Structured JSON output is parsed and converted to TOON by default; explicit text output is passed through as-is.
 
 **Error handling:** CLI subprocess failures, non-zero exits, timeouts, and invalid JSON are returned as MCP error results. Timeouts are configurable via `KAGI_MCP_TIMEOUT_MS`.
 
@@ -177,7 +178,7 @@ cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
-The test suite uses fixture scripts as local `kagi` binaries to verify argument building, JSON parsing, stdin handling, profile passthrough, and error surfacing without requiring a real Kagi connection.
+The test suite uses fixture scripts as local `kagi` binaries to verify argument building, JSON parsing, TOON conversion, stdin handling, profile passthrough, and error surfacing without requiring a real Kagi connection.
 
 ## License
 
