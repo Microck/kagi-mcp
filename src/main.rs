@@ -22,6 +22,7 @@ const TIMEOUT_ENV: &str = "KAGI_MCP_TIMEOUT_MS";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OutputMode {
     Json,
+    JsonToToon,
     Toon,
     Text,
 }
@@ -595,11 +596,12 @@ impl CliRunner {
                     .map_err(|error| RunnerError::Parse(error.to_string()))?;
                 Ok(CommandOutput::Json(value))
             }
-            OutputMode::Toon => {
+            OutputMode::JsonToToon => {
                 let value: Value = serde_json::from_str(&stdout)
                     .map_err(|error| RunnerError::Parse(error.to_string()))?;
                 Ok(CommandOutput::Toon(toon::encode(&value, None)))
             }
+            OutputMode::Toon => Ok(CommandOutput::Toon(stdout)),
             OutputMode::Text => Ok(CommandOutput::Text(stdout)),
         }
     }
@@ -880,7 +882,7 @@ fn summarize(args: SummarizeArgs) -> CommandSpec {
     CommandSpec {
         args: argv,
         stdin,
-        output_mode: OutputMode::Toon,
+        output_mode: OutputMode::JsonToToon,
     }
 }
 
@@ -895,21 +897,21 @@ fn news(args: NewsArgs) -> CommandSpec {
     push_opt_value(&mut argv, "--filter-mode", args.filter_mode);
     push_opt_value(&mut argv, "--filter-scope", args.filter_scope);
 
-    command_spec(argv, OutputMode::Toon)
+    command_spec(argv, OutputMode::JsonToToon)
 }
 
 fn news_categories(args: LangArgs) -> CommandSpec {
     let mut argv = vec!["news".to_string(), "--list-categories".to_string()];
     push_opt_value(&mut argv, "--lang", args.lang);
 
-    command_spec(argv, OutputMode::Toon)
+    command_spec(argv, OutputMode::JsonToToon)
 }
 
 fn news_chaos(args: LangArgs) -> CommandSpec {
     let mut argv = vec!["news".to_string(), "--chaos".to_string()];
     push_opt_value(&mut argv, "--lang", args.lang);
 
-    command_spec(argv, OutputMode::Toon)
+    command_spec(argv, OutputMode::JsonToToon)
 }
 
 fn assistant(args: AssistantArgs) -> CommandSpec {
@@ -936,20 +938,20 @@ fn fastgpt(args: FastGptArgs) -> CommandSpec {
     push_opt_flag(&mut argv, "--local-cache", args.local_cache);
     push_opt_u64(&mut argv, "--cache-ttl", args.cache_ttl);
 
-    command_spec(argv, OutputMode::Toon)
+    command_spec(argv, OutputMode::JsonToToon)
 }
 
 fn enrich_web(args: EnrichArgs) -> CommandSpec {
     command_spec(
         vec!["enrich".to_string(), "web".to_string(), args.query],
-        OutputMode::Toon,
+        OutputMode::JsonToToon,
     )
 }
 
 fn enrich_news(args: EnrichArgs) -> CommandSpec {
     command_spec(
         vec!["enrich".to_string(), "news".to_string(), args.query],
-        OutputMode::Toon,
+        OutputMode::JsonToToon,
     )
 }
 
@@ -957,7 +959,7 @@ fn smallweb(args: SmallWebArgs) -> CommandSpec {
     let mut argv = vec!["smallweb".to_string()];
     push_opt_u32(&mut argv, "--limit", args.limit);
 
-    command_spec(argv, OutputMode::Toon)
+    command_spec(argv, OutputMode::JsonToToon)
 }
 
 fn auth_status() -> CommandSpec {
@@ -1024,7 +1026,7 @@ fn translate(args: TranslateArgs) -> CommandSpec {
     if args.no_alignments.unwrap_or(false) {
         argv.push("--no-alignments".to_string());
     }
-    command_spec(argv, OutputMode::Toon)
+    command_spec(argv, OutputMode::JsonToToon)
 }
 
 fn batch(args: BatchArgs) -> CommandSpec {
@@ -1064,7 +1066,7 @@ fn batch(args: BatchArgs) -> CommandSpec {
 fn ask_page(args: AskPageArgs) -> CommandSpec {
     command_spec(
         vec!["ask-page".to_string(), args.url, args.question],
-        OutputMode::Toon,
+        OutputMode::JsonToToon,
     )
 }
 
@@ -1075,7 +1077,7 @@ fn assistant_thread_list() -> CommandSpec {
             "thread".to_string(),
             "list".to_string(),
         ],
-        OutputMode::Toon,
+        OutputMode::JsonToToon,
     )
 }
 
@@ -1087,7 +1089,7 @@ fn assistant_thread_get(args: ThreadIdArgs) -> CommandSpec {
             "get".to_string(),
             args.thread_id,
         ],
-        OutputMode::Toon,
+        OutputMode::JsonToToon,
     )
 }
 
@@ -1099,7 +1101,7 @@ fn assistant_thread_export(args: ThreadExportArgs) -> CommandSpec {
         args.thread_id,
     ];
     push_opt_value(&mut argv, "--format", args.format);
-    command_spec(argv, OutputMode::Toon)
+    command_spec(argv, OutputMode::JsonToToon)
 }
 
 fn assistant_thread_delete(args: ThreadIdArgs) -> CommandSpec {
@@ -1110,27 +1112,27 @@ fn assistant_thread_delete(args: ThreadIdArgs) -> CommandSpec {
             "delete".to_string(),
             args.thread_id,
         ],
-        OutputMode::Toon,
+        OutputMode::JsonToToon,
     )
 }
 
 fn history_list(args: HistoryListArgs) -> CommandSpec {
     let mut argv = vec!["history".to_string(), "list".to_string()];
     push_opt_u32(&mut argv, "--limit", args.limit);
-    command_spec(argv, OutputMode::Toon)
+    command_spec(argv, OutputMode::JsonToToon)
 }
 
 fn history_stats() -> CommandSpec {
     command_spec(
         vec!["history".to_string(), "stats".to_string()],
-        OutputMode::Toon,
+        OutputMode::JsonToToon,
     )
 }
 
 fn site_pref_list() -> CommandSpec {
     command_spec(
         vec!["site-pref".to_string(), "list".to_string()],
-        OutputMode::Toon,
+        OutputMode::JsonToToon,
     )
 }
 
@@ -1143,14 +1145,14 @@ fn site_pref_set(args: SitePrefSetArgs) -> CommandSpec {
             "--mode".to_string(),
             args.mode,
         ],
-        OutputMode::Toon,
+        OutputMode::JsonToToon,
     )
 }
 
 fn site_pref_remove(args: SitePrefDomainArgs) -> CommandSpec {
     command_spec(
         vec!["site-pref".to_string(), "remove".to_string(), args.domain],
-        OutputMode::Toon,
+        OutputMode::JsonToToon,
     )
 }
 
@@ -1171,9 +1173,8 @@ fn push_opt_value(argv: &mut Vec<String>, flag: &str, value: Option<String>) {
 
 fn push_cli_format(argv: &mut Vec<String>, format: Option<String>, output_mode: OutputMode) {
     let cli_format = match (format, output_mode) {
-        (Some(format), OutputMode::Toon) if format == "toon" => Some("json".to_string()),
         (Some(format), _) => Some(format),
-        (None, OutputMode::Toon) => Some("json".to_string()),
+        (None, OutputMode::Toon) => Some("toon".to_string()),
         (None, _) => None,
     };
     push_opt_value(argv, "--format", cli_format);
@@ -1345,7 +1346,7 @@ mod tests {
         assert_eq!(
             search(args),
             CommandSpec {
-                args: strings(&["search", "rust", "--lens", "2", "--format", "json"]),
+                args: strings(&["search", "rust", "--lens", "2", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
             }
@@ -1353,14 +1354,14 @@ mod tests {
     }
 
     #[test]
-    fn builds_search_toon_args_as_cli_json() {
+    fn builds_search_toon_args_as_cli_toon() {
         let mut args = search_args("rust");
         args.format = Some("toon".to_string());
 
         assert_eq!(
             search(args),
             CommandSpec {
-                args: strings(&["search", "rust", "--format", "json"]),
+                args: strings(&["search", "rust", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
             }
@@ -1429,7 +1430,7 @@ mod tests {
                     "--filter"
                 ]),
                 stdin: Some("https://example.com/a\nplain text\n".to_string()),
-                output_mode: OutputMode::Toon,
+                output_mode: OutputMode::JsonToToon,
             }
         );
     }
@@ -1465,14 +1466,14 @@ mod tests {
     }
 
     #[test]
-    fn builds_batch_default_toon_as_cli_json() {
+    fn builds_batch_default_toon_as_cli_toon() {
         let mut args = batch_args();
         args.queries = strings(&["rust", "zig"]);
 
         assert_eq!(
             batch(args),
             CommandSpec {
-                args: strings(&["batch", "rust", "zig", "--format", "json"]),
+                args: strings(&["batch", "rust", "zig", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
             }
@@ -1518,14 +1519,14 @@ mod tests {
     }
 
     #[test]
-    fn builds_assistant_toon_args_as_cli_json() {
+    fn builds_assistant_toon_args_as_cli_toon() {
         let mut args = assistant_args("explain rust");
         args.format = Some("toon".to_string());
 
         assert_eq!(
             assistant(args),
             CommandSpec {
-                args: strings(&["assistant", "explain rust", "--format", "json"]),
+                args: strings(&["assistant", "explain rust", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
             }
@@ -1539,7 +1540,7 @@ mod tests {
             CommandSpec {
                 args: strings(&["history", "list", "--limit", "5"]),
                 stdin: None,
-                output_mode: OutputMode::Toon,
+                output_mode: OutputMode::JsonToToon,
             }
         );
         assert_eq!(
@@ -1547,7 +1548,7 @@ mod tests {
             CommandSpec {
                 args: strings(&["history", "stats"]),
                 stdin: None,
-                output_mode: OutputMode::Toon,
+                output_mode: OutputMode::JsonToToon,
             }
         );
         assert_eq!(
@@ -1558,7 +1559,7 @@ mod tests {
             CommandSpec {
                 args: strings(&["site-pref", "set", "example.com", "--mode", "higher"]),
                 stdin: None,
-                output_mode: OutputMode::Toon,
+                output_mode: OutputMode::JsonToToon,
             }
         );
     }
@@ -1603,7 +1604,7 @@ mod tests {
             .run(CommandSpec {
                 args: strings(&["search", "rust", "--format", "json"]),
                 stdin: None,
-                output_mode: OutputMode::Toon,
+                output_mode: OutputMode::JsonToToon,
             })
             .await
             .expect("json output should convert to TOON");
@@ -1613,6 +1614,30 @@ mod tests {
         };
         assert!(text.contains("ok: true"));
         assert!(text.contains("Rust"));
+    }
+
+    #[tokio::test]
+    async fn passes_native_toon_output_through() {
+        let dir = tempdir().expect("tempdir");
+        let script = write_fixture(
+            dir.path(),
+            "#!/usr/bin/env bash\nprintf 'data[1]{title}:\\n  Rust\\n'\n",
+        );
+        let runner = CliRunner::new(script, Duration::from_millis(500));
+
+        let output = runner
+            .run(CommandSpec {
+                args: strings(&["search", "rust", "--format", "toon"]),
+                stdin: None,
+                output_mode: OutputMode::Toon,
+            })
+            .await
+            .expect("native CLI TOON should pass through");
+
+        assert_eq!(
+            output,
+            CommandOutput::Toon("data[1]{title}:\n  Rust".to_string())
+        );
     }
 
     #[tokio::test]
