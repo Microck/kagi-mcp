@@ -852,7 +852,7 @@ fn search(args: SearchArgs) -> CommandSpec {
     push_opt_u32(&mut argv, "--follow", args.follow);
     push_opt_flag(&mut argv, "--local-cache", args.local_cache);
     push_opt_u64(&mut argv, "--cache-ttl", args.cache_ttl);
-    push_opt_value(&mut argv, "--format", args.format);
+    push_cli_format(&mut argv, args.format, output_mode);
     command_spec(argv, output_mode)
 }
 
@@ -918,7 +918,7 @@ fn assistant(args: AssistantArgs) -> CommandSpec {
     push_opt_value(&mut argv, "--thread-id", args.thread_id);
     push_repeated_value(&mut argv, "--attach", args.attach);
     push_opt_value(&mut argv, "--assistant", args.assistant);
-    push_opt_value(&mut argv, "--format", args.format);
+    push_cli_format(&mut argv, args.format, output_mode);
     push_opt_value(&mut argv, "--model", args.model);
     push_opt_u64(&mut argv, "--lens", args.lens);
     push_opt_flag(&mut argv, "--web-access", args.web_access);
@@ -977,7 +977,7 @@ fn auth_check() -> CommandSpec {
 fn quick(args: QuickArgs) -> CommandSpec {
     let output_mode = output_mode_for_format(args.format.as_deref());
     let mut argv = vec!["quick".to_string(), args.query];
-    push_opt_value(&mut argv, "--format", args.format);
+    push_cli_format(&mut argv, args.format, output_mode);
     push_opt_value(&mut argv, "--lens", args.lens);
     push_opt_flag(&mut argv, "--local-cache", args.local_cache);
     push_opt_u64(&mut argv, "--cache-ttl", args.cache_ttl);
@@ -1037,7 +1037,7 @@ fn batch(args: BatchArgs) -> CommandSpec {
     argv.extend(args.queries);
     push_opt_u32(&mut argv, "--concurrency", args.concurrency);
     push_opt_u32(&mut argv, "--rate-limit", args.rate_limit);
-    push_opt_value(&mut argv, "--format", args.format);
+    push_cli_format(&mut argv, args.format, output_mode);
     push_opt_value(&mut argv, "--snap", args.snap);
     push_opt_value(&mut argv, "--lens", args.lens);
     push_opt_value(&mut argv, "--region", args.region);
@@ -1167,6 +1167,16 @@ fn push_opt_value(argv: &mut Vec<String>, flag: &str, value: Option<String>) {
         argv.push(flag.to_string());
         argv.push(value);
     }
+}
+
+fn push_cli_format(argv: &mut Vec<String>, format: Option<String>, output_mode: OutputMode) {
+    let cli_format = match (format, output_mode) {
+        (Some(format), OutputMode::Toon) if format == "toon" => Some("json".to_string()),
+        (Some(format), _) => Some(format),
+        (None, OutputMode::Toon) => Some("json".to_string()),
+        (None, _) => None,
+    };
+    push_opt_value(argv, "--format", cli_format);
 }
 
 fn push_opt_bool(argv: &mut Vec<String>, flag: &str, value: Option<bool>) {
@@ -1335,7 +1345,22 @@ mod tests {
         assert_eq!(
             search(args),
             CommandSpec {
-                args: strings(&["search", "rust", "--lens", "2"]),
+                args: strings(&["search", "rust", "--lens", "2", "--format", "json"]),
+                stdin: None,
+                output_mode: OutputMode::Toon,
+            }
+        );
+    }
+
+    #[test]
+    fn builds_search_toon_args_as_cli_json() {
+        let mut args = search_args("rust");
+        args.format = Some("toon".to_string());
+
+        assert_eq!(
+            search(args),
+            CommandSpec {
+                args: strings(&["search", "rust", "--format", "json"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
             }
@@ -1440,6 +1465,21 @@ mod tests {
     }
 
     #[test]
+    fn builds_batch_default_toon_as_cli_json() {
+        let mut args = batch_args();
+        args.queries = strings(&["rust", "zig"]);
+
+        assert_eq!(
+            batch(args),
+            CommandSpec {
+                args: strings(&["batch", "rust", "zig", "--format", "json"]),
+                stdin: None,
+                output_mode: OutputMode::Toon,
+            }
+        );
+    }
+
+    #[test]
     fn builds_assistant_prompt_options() {
         let mut args = assistant_args("explain rust");
         args.attach = strings(&["notes.md", "trace.txt"]);
@@ -1473,6 +1513,21 @@ mod tests {
                 ]),
                 stdin: None,
                 output_mode: OutputMode::Text,
+            }
+        );
+    }
+
+    #[test]
+    fn builds_assistant_toon_args_as_cli_json() {
+        let mut args = assistant_args("explain rust");
+        args.format = Some("toon".to_string());
+
+        assert_eq!(
+            assistant(args),
+            CommandSpec {
+                args: strings(&["assistant", "explain rust", "--format", "json"]),
+                stdin: None,
+                output_mode: OutputMode::Toon,
             }
         );
     }
@@ -1533,6 +1588,31 @@ mod tests {
                 "args": ["search", "rust"]
             }))
         );
+    }
+
+    #[tokio::test]
+    async fn converts_json_output_to_toon() {
+        let dir = tempdir().expect("tempdir");
+        let script = write_fixture(
+            dir.path(),
+            "#!/usr/bin/env bash\nprintf '{\"ok\":true,\"results\":[{\"title\":\"Rust\"}]}\\n'\n",
+        );
+        let runner = CliRunner::new(script, Duration::from_millis(500));
+
+        let output = runner
+            .run(CommandSpec {
+                args: strings(&["search", "rust", "--format", "json"]),
+                stdin: None,
+                output_mode: OutputMode::Toon,
+            })
+            .await
+            .expect("json output should convert to TOON");
+
+        let CommandOutput::Toon(text) = output else {
+            panic!("expected TOON output");
+        };
+        assert!(text.contains("ok: true"));
+        assert!(text.contains("Rust"));
     }
 
     #[tokio::test]
