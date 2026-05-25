@@ -101,7 +101,13 @@ struct SearchArgs {
     template: Option<String>,
     /// Summarize the top N result URLs using subscriber summarizer.
     #[serde(default)]
-    follow: Option<u32>,
+    follow: Option<u64>,
+    /// Maximum number of search results to return.
+    #[serde(default)]
+    limit: Option<u64>,
+    /// Search the Kagi News tab instead of web results.
+    #[serde(default)]
+    news: Option<bool>,
     /// Locally cache this response.
     #[serde(default)]
     local_cache: Option<bool>,
@@ -111,6 +117,9 @@ struct SearchArgs {
     /// Optional output format (toon, json, pretty, compact, markdown, csv).
     #[serde(default)]
     format: Option<String>,
+    /// Disable colored terminal output for pretty format.
+    #[serde(default)]
+    no_color: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -148,6 +157,12 @@ struct SummarizeArgs {
     /// Override local cache TTL in seconds.
     #[serde(default)]
     cache_ttl: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct ExtractArgs {
+    /// HTTPS URL of the page to extract as markdown.
+    url: String,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -219,6 +234,37 @@ struct AssistantArgs {
     /// Force personalizations off.
     #[serde(default)]
     no_personalized: Option<bool>,
+    /// Export the Assistant transcript when the wrapped CLI supports it.
+    #[serde(default)]
+    export: Option<String>,
+    /// Disable colored terminal output for pretty format.
+    #[serde(default)]
+    no_color: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct AssistantReplArgs {
+    /// Prompts to feed to the Assistant REPL before sending `/exit`.
+    #[serde(default)]
+    prompts: Vec<String>,
+    /// Optional existing thread id.
+    #[serde(default)]
+    thread_id: Option<String>,
+    /// Saved assistant name, id, or invoke profile slug.
+    #[serde(default)]
+    assistant: Option<String>,
+    /// Override the Assistant model slug.
+    #[serde(default)]
+    model: Option<String>,
+    /// Output format for each response (toon, json, pretty, compact, markdown).
+    #[serde(default)]
+    format: Option<String>,
+    /// Export the REPL transcript when the session exits.
+    #[serde(default)]
+    export: Option<String>,
+    /// Disable colored terminal output.
+    #[serde(default)]
+    no_color: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -259,6 +305,9 @@ struct QuickArgs {
     /// Optional output format (toon, json, pretty, compact, markdown).
     #[serde(default)]
     format: Option<String>,
+    /// Disable colored terminal output for pretty format.
+    #[serde(default)]
+    no_color: Option<bool>,
     /// Scope quick answer to a Kagi lens by numeric index.
     #[serde(default)]
     lens: Option<String>,
@@ -352,7 +401,7 @@ struct BatchArgs {
     stdin_queries: Vec<String>,
     /// Maximum concurrent requests (default: 3).
     #[serde(default)]
-    concurrency: Option<u32>,
+    concurrency: Option<u64>,
     /// Rate limit in requests per minute (default: 60).
     #[serde(default)]
     rate_limit: Option<u32>,
@@ -392,6 +441,12 @@ struct BatchArgs {
     /// Render each result with a lightweight template.
     #[serde(default)]
     template: Option<String>,
+    /// Maximum number of search results to return per query.
+    #[serde(default)]
+    limit: Option<u64>,
+    /// Disable colored terminal output for pretty format.
+    #[serde(default)]
+    no_color: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -421,7 +476,7 @@ struct ThreadExportArgs {
 struct HistoryListArgs {
     /// Maximum local history entries to return.
     #[serde(default)]
-    limit: Option<u32>,
+    limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -436,6 +491,236 @@ struct SitePrefSetArgs {
 struct SitePrefDomainArgs {
     /// Domain to remove.
     domain: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct AuthSetArgs {
+    /// Kagi API token to save into `.kagi.toml`.
+    #[serde(default)]
+    api_token: Option<String>,
+    /// Kagi session token or full Session Link URL to save into `.kagi.toml`.
+    #[serde(default)]
+    session_token: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct LensTargetArgs {
+    /// Lens id or exact lens name.
+    target: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct LensCreateArgs {
+    /// Lens display name.
+    name: String,
+    #[serde(flatten)]
+    options: LensOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct LensUpdateArgs {
+    /// Lens id or exact lens name.
+    target: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(flatten)]
+    options: LensOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+struct LensOptions {
+    #[serde(default)]
+    included_sites: Option<String>,
+    #[serde(default)]
+    included_keywords: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    region: Option<String>,
+    #[serde(default)]
+    before_date: Option<String>,
+    #[serde(default)]
+    after_date: Option<String>,
+    #[serde(default)]
+    excluded_sites: Option<String>,
+    #[serde(default)]
+    excluded_keywords: Option<String>,
+    #[serde(default)]
+    shortcut: Option<String>,
+    #[serde(default)]
+    autocomplete_keywords: Option<bool>,
+    #[serde(default)]
+    no_autocomplete_keywords: Option<bool>,
+    #[serde(default)]
+    template: Option<String>,
+    #[serde(default)]
+    file_type: Option<String>,
+    #[serde(default)]
+    share_with_team: Option<bool>,
+    #[serde(default)]
+    no_share_with_team: Option<bool>,
+    #[serde(default)]
+    share_copy_code: Option<bool>,
+    #[serde(default)]
+    no_share_copy_code: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct AssistantCustomTargetArgs {
+    /// Custom assistant id or exact assistant name.
+    target: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct AssistantCustomCreateArgs {
+    /// Assistant name.
+    name: String,
+    #[serde(flatten)]
+    options: AssistantCustomOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct AssistantCustomUpdateArgs {
+    /// Custom assistant id or exact assistant name.
+    target: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(flatten)]
+    options: AssistantCustomOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+struct AssistantCustomOptions {
+    #[serde(default)]
+    bang_trigger: Option<String>,
+    #[serde(default)]
+    web_access: Option<bool>,
+    #[serde(default)]
+    no_web_access: Option<bool>,
+    #[serde(default)]
+    lens: Option<String>,
+    #[serde(default)]
+    personalized: Option<bool>,
+    #[serde(default)]
+    no_personalized: Option<bool>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    instructions: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct CustomBangTargetArgs {
+    /// Bang id, exact name, or trigger.
+    target: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct CustomBangCreateArgs {
+    /// Bang display name.
+    name: String,
+    /// Bang trigger without the leading `!`.
+    trigger: String,
+    #[serde(flatten)]
+    options: CustomBangOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct CustomBangUpdateArgs {
+    /// Bang id, exact name, or trigger.
+    target: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    trigger: Option<String>,
+    #[serde(flatten)]
+    options: CustomBangOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+struct CustomBangOptions {
+    #[serde(default)]
+    template: Option<String>,
+    #[serde(default)]
+    snap_domain: Option<String>,
+    #[serde(default)]
+    regex_pattern: Option<String>,
+    #[serde(default)]
+    shortcut_menu: Option<bool>,
+    #[serde(default)]
+    no_shortcut_menu: Option<bool>,
+    #[serde(default)]
+    open_snap_domain: Option<bool>,
+    #[serde(default)]
+    no_open_snap_domain: Option<bool>,
+    #[serde(default)]
+    open_base_path: Option<bool>,
+    #[serde(default)]
+    no_open_base_path: Option<bool>,
+    #[serde(default)]
+    encode_placeholder: Option<bool>,
+    #[serde(default)]
+    no_encode_placeholder: Option<bool>,
+    #[serde(default)]
+    plus_for_space: Option<bool>,
+    #[serde(default)]
+    no_plus_for_space: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct RedirectTargetArgs {
+    /// Redirect id or exact rule text.
+    target: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct RedirectCreateArgs {
+    /// Full regex|replacement redirect rule.
+    rule: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct RedirectUpdateArgs {
+    /// Redirect id or exact rule text.
+    target: String,
+    /// Full replacement regex|replacement redirect rule.
+    rule: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct WatchArgs {
+    /// Search query to monitor.
+    query: String,
+    /// Poll interval in seconds.
+    #[serde(default)]
+    interval: Option<u64>,
+    /// Number of polls to run. Omit or pass 0 for CLI default behavior.
+    #[serde(default)]
+    count: Option<u32>,
+    /// Optional output format (toon, json, pretty, compact, markdown, csv).
+    #[serde(default)]
+    format: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct NotifyArgs {
+    /// Search query to run before notifying.
+    #[serde(default)]
+    query: Option<String>,
+    /// Kagi News category to fetch before notifying.
+    #[serde(default)]
+    news_category: Option<String>,
+    /// Webhook endpoint that receives the JSON payload.
+    webhook_url: String,
+    /// Only send when `watch` detects a changed search result set.
+    #[serde(default)]
+    change_only: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct CompletionArgs {
+    /// Shell completion target: bash, zsh, fish, or powershell.
+    shell: String,
 }
 
 #[derive(Clone)]
@@ -645,6 +930,14 @@ impl KagiServer {
         Ok(self.execute(summarize(args)).await)
     }
 
+    #[tool(description = "Extract a page's full content as markdown through Kagi Extract.")]
+    async fn kagi_extract(
+        &self,
+        Parameters(args): Parameters<ExtractArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(extract(args)).await)
+    }
+
     #[tool(description = "Fetch Kagi News stories as TOON.")]
     async fn kagi_news(
         &self,
@@ -677,6 +970,14 @@ impl KagiServer {
         Parameters(args): Parameters<AssistantArgs>,
     ) -> Result<CallToolResult, McpError> {
         Ok(self.execute(assistant(args)).await)
+    }
+
+    #[tool(description = "Run a bounded Kagi Assistant REPL by feeding prompts, then `/exit`.")]
+    async fn kagi_assistant_repl(
+        &self,
+        Parameters(args): Parameters<AssistantReplArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(assistant_repl(args)).await)
     }
 
     #[tool(description = "Prompt Kagi FastGPT as TOON.")]
@@ -719,6 +1020,14 @@ impl KagiServer {
     #[tool(description = "Run `kagi auth check` through the wrapped CLI.")]
     async fn kagi_auth_check(&self) -> Result<CallToolResult, McpError> {
         Ok(self.execute(auth_check()).await)
+    }
+
+    #[tool(description = "Save API and/or session credentials with `kagi auth set`.")]
+    async fn kagi_auth_set(
+        &self,
+        Parameters(args): Parameters<AuthSetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(auth_set(args)).await)
     }
 
     #[tool(description = "Get a quick answer with references from Kagi.")]
@@ -815,6 +1124,210 @@ impl KagiServer {
     ) -> Result<CallToolResult, McpError> {
         Ok(self.execute(site_pref_remove(args)).await)
     }
+
+    #[tool(description = "List available Kagi lenses.")]
+    async fn kagi_lens_list(&self) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(lens_list()).await)
+    }
+
+    #[tool(description = "Get one Kagi lens by id or exact name.")]
+    async fn kagi_lens_get(
+        &self,
+        Parameters(args): Parameters<LensTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(lens_get(args)).await)
+    }
+
+    #[tool(description = "Create a Kagi lens.")]
+    async fn kagi_lens_create(
+        &self,
+        Parameters(args): Parameters<LensCreateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(lens_create(args)).await)
+    }
+
+    #[tool(description = "Update a Kagi lens by id or exact name.")]
+    async fn kagi_lens_update(
+        &self,
+        Parameters(args): Parameters<LensUpdateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(lens_update(args)).await)
+    }
+
+    #[tool(description = "Delete a Kagi lens by id or exact name.")]
+    async fn kagi_lens_delete(
+        &self,
+        Parameters(args): Parameters<LensTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(lens_delete(args)).await)
+    }
+
+    #[tool(description = "Enable a Kagi lens by id or exact name.")]
+    async fn kagi_lens_enable(
+        &self,
+        Parameters(args): Parameters<LensTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(lens_enable(args)).await)
+    }
+
+    #[tool(description = "Disable a Kagi lens by id or exact name.")]
+    async fn kagi_lens_disable(
+        &self,
+        Parameters(args): Parameters<LensTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(lens_disable(args)).await)
+    }
+
+    #[tool(description = "List custom and built-in assistants visible to the account.")]
+    async fn kagi_assistant_custom_list(&self) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(assistant_custom_list()).await)
+    }
+
+    #[tool(description = "Get a custom assistant by id or exact name.")]
+    async fn kagi_assistant_custom_get(
+        &self,
+        Parameters(args): Parameters<AssistantCustomTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(assistant_custom_get(args)).await)
+    }
+
+    #[tool(description = "Create a custom assistant.")]
+    async fn kagi_assistant_custom_create(
+        &self,
+        Parameters(args): Parameters<AssistantCustomCreateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(assistant_custom_create(args)).await)
+    }
+
+    #[tool(description = "Update a custom assistant by id or exact name.")]
+    async fn kagi_assistant_custom_update(
+        &self,
+        Parameters(args): Parameters<AssistantCustomUpdateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(assistant_custom_update(args)).await)
+    }
+
+    #[tool(description = "Delete a custom assistant by id or exact name.")]
+    async fn kagi_assistant_custom_delete(
+        &self,
+        Parameters(args): Parameters<AssistantCustomTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(assistant_custom_delete(args)).await)
+    }
+
+    #[tool(description = "List custom bangs.")]
+    async fn kagi_bang_custom_list(&self) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(bang_custom_list()).await)
+    }
+
+    #[tool(description = "Get a custom bang by id, exact name, or trigger.")]
+    async fn kagi_bang_custom_get(
+        &self,
+        Parameters(args): Parameters<CustomBangTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(bang_custom_get(args)).await)
+    }
+
+    #[tool(description = "Create a custom bang.")]
+    async fn kagi_bang_custom_create(
+        &self,
+        Parameters(args): Parameters<CustomBangCreateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(bang_custom_create(args)).await)
+    }
+
+    #[tool(description = "Update a custom bang by id, exact name, or trigger.")]
+    async fn kagi_bang_custom_update(
+        &self,
+        Parameters(args): Parameters<CustomBangUpdateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(bang_custom_update(args)).await)
+    }
+
+    #[tool(description = "Delete a custom bang by id, exact name, or trigger.")]
+    async fn kagi_bang_custom_delete(
+        &self,
+        Parameters(args): Parameters<CustomBangTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(bang_custom_delete(args)).await)
+    }
+
+    #[tool(description = "List redirect rules.")]
+    async fn kagi_redirect_list(&self) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(redirect_list()).await)
+    }
+
+    #[tool(description = "Get a redirect rule by id or exact rule text.")]
+    async fn kagi_redirect_get(
+        &self,
+        Parameters(args): Parameters<RedirectTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(redirect_get(args)).await)
+    }
+
+    #[tool(description = "Create a redirect rule.")]
+    async fn kagi_redirect_create(
+        &self,
+        Parameters(args): Parameters<RedirectCreateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(redirect_create(args)).await)
+    }
+
+    #[tool(description = "Update a redirect rule by id or exact rule text.")]
+    async fn kagi_redirect_update(
+        &self,
+        Parameters(args): Parameters<RedirectUpdateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(redirect_update(args)).await)
+    }
+
+    #[tool(description = "Delete a redirect rule by id or exact rule text.")]
+    async fn kagi_redirect_delete(
+        &self,
+        Parameters(args): Parameters<RedirectTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(redirect_delete(args)).await)
+    }
+
+    #[tool(description = "Enable a redirect rule by id or exact rule text.")]
+    async fn kagi_redirect_enable(
+        &self,
+        Parameters(args): Parameters<RedirectTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(redirect_enable(args)).await)
+    }
+
+    #[tool(description = "Disable a redirect rule by id or exact rule text.")]
+    async fn kagi_redirect_disable(
+        &self,
+        Parameters(args): Parameters<RedirectTargetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(redirect_disable(args)).await)
+    }
+
+    #[tool(description = "Run `kagi watch`; pass a finite count to keep this request bounded.")]
+    async fn kagi_watch(
+        &self,
+        Parameters(args): Parameters<WatchArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(watch(args)).await)
+    }
+
+    #[tool(description = "Run a search or news fetch and post the JSON payload to a webhook.")]
+    async fn kagi_notify(
+        &self,
+        Parameters(args): Parameters<NotifyArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(notify(args)).await)
+    }
+
+    #[tool(description = "Generate a shell completion script for the wrapped kagi CLI.")]
+    async fn kagi_generate_completion(
+        &self,
+        Parameters(args): Parameters<CompletionArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(generate_completion(args)).await)
+    }
 }
 
 #[tool_handler]
@@ -851,10 +1364,13 @@ fn search(args: SearchArgs) -> CommandSpec {
     push_opt_flag(&mut argv, "--personalized", args.personalized);
     push_opt_flag(&mut argv, "--no-personalized", args.no_personalized);
     push_opt_value(&mut argv, "--template", args.template.clone());
-    push_opt_u32(&mut argv, "--follow", args.follow);
+    push_opt_u64(&mut argv, "--follow", args.follow);
+    push_opt_u64(&mut argv, "--limit", args.limit);
+    push_opt_flag(&mut argv, "--news", args.news);
     push_opt_flag(&mut argv, "--local-cache", args.local_cache);
     push_opt_u64(&mut argv, "--cache-ttl", args.cache_ttl);
     push_cli_format(&mut argv, args.format, output_mode);
+    push_opt_flag(&mut argv, "--no-color", args.no_color);
     command_spec(argv, output_mode)
 }
 
@@ -884,6 +1400,10 @@ fn summarize(args: SummarizeArgs) -> CommandSpec {
         stdin,
         output_mode: OutputMode::JsonToToon,
     }
+}
+
+fn extract(args: ExtractArgs) -> CommandSpec {
+    command_spec(vec!["extract".to_string(), args.url], OutputMode::Text)
 }
 
 fn news(args: NewsArgs) -> CommandSpec {
@@ -921,14 +1441,38 @@ fn assistant(args: AssistantArgs) -> CommandSpec {
     push_repeated_value(&mut argv, "--attach", args.attach);
     push_opt_value(&mut argv, "--assistant", args.assistant);
     push_cli_format(&mut argv, args.format, output_mode);
+    push_opt_flag(&mut argv, "--no-color", args.no_color);
     push_opt_value(&mut argv, "--model", args.model);
     push_opt_u64(&mut argv, "--lens", args.lens);
     push_opt_flag(&mut argv, "--web-access", args.web_access);
     push_opt_flag(&mut argv, "--no-web-access", args.no_web_access);
     push_opt_flag(&mut argv, "--personalized", args.personalized);
     push_opt_flag(&mut argv, "--no-personalized", args.no_personalized);
+    push_opt_value(&mut argv, "--export", args.export);
 
     command_spec(argv, output_mode)
+}
+
+fn assistant_repl(args: AssistantReplArgs) -> CommandSpec {
+    let mut argv = vec!["assistant".to_string(), "repl".to_string()];
+    push_opt_value(&mut argv, "--thread-id", args.thread_id);
+    push_opt_value(&mut argv, "--assistant", args.assistant);
+    push_opt_value(&mut argv, "--model", args.model);
+    push_opt_value(&mut argv, "--format", args.format);
+    push_opt_value(&mut argv, "--export", args.export);
+    push_opt_flag(&mut argv, "--no-color", args.no_color);
+
+    let mut stdin = args.prompts.join("\n");
+    if !stdin.is_empty() {
+        stdin.push('\n');
+    }
+    stdin.push_str("/exit\n");
+
+    CommandSpec {
+        args: argv,
+        stdin: Some(stdin),
+        output_mode: OutputMode::Text,
+    }
 }
 
 fn fastgpt(args: FastGptArgs) -> CommandSpec {
@@ -980,6 +1524,7 @@ fn quick(args: QuickArgs) -> CommandSpec {
     let output_mode = output_mode_for_format(args.format.as_deref());
     let mut argv = vec!["quick".to_string(), args.query];
     push_cli_format(&mut argv, args.format, output_mode);
+    push_opt_flag(&mut argv, "--no-color", args.no_color);
     push_opt_value(&mut argv, "--lens", args.lens);
     push_opt_flag(&mut argv, "--local-cache", args.local_cache);
     push_opt_u64(&mut argv, "--cache-ttl", args.cache_ttl);
@@ -1037,7 +1582,7 @@ fn batch(args: BatchArgs) -> CommandSpec {
     };
     let mut argv = vec!["batch".to_string()];
     argv.extend(args.queries);
-    push_opt_u32(&mut argv, "--concurrency", args.concurrency);
+    push_opt_u64(&mut argv, "--concurrency", args.concurrency);
     push_opt_u32(&mut argv, "--rate-limit", args.rate_limit);
     push_cli_format(&mut argv, args.format, output_mode);
     push_opt_value(&mut argv, "--snap", args.snap);
@@ -1051,6 +1596,8 @@ fn batch(args: BatchArgs) -> CommandSpec {
     push_opt_flag(&mut argv, "--personalized", args.personalized);
     push_opt_flag(&mut argv, "--no-personalized", args.no_personalized);
     push_opt_value(&mut argv, "--template", args.template.clone());
+    push_opt_u64(&mut argv, "--limit", args.limit);
+    push_opt_flag(&mut argv, "--no-color", args.no_color);
     let stdin = if args.stdin_queries.is_empty() {
         None
     } else {
@@ -1094,6 +1641,10 @@ fn assistant_thread_get(args: ThreadIdArgs) -> CommandSpec {
 }
 
 fn assistant_thread_export(args: ThreadExportArgs) -> CommandSpec {
+    let output_mode = match args.format.as_deref() {
+        Some("json") => OutputMode::JsonToToon,
+        _ => OutputMode::Text,
+    };
     let mut argv = vec![
         "assistant".to_string(),
         "thread".to_string(),
@@ -1101,7 +1652,7 @@ fn assistant_thread_export(args: ThreadExportArgs) -> CommandSpec {
         args.thread_id,
     ];
     push_opt_value(&mut argv, "--format", args.format);
-    command_spec(argv, OutputMode::JsonToToon)
+    command_spec(argv, output_mode)
 }
 
 fn assistant_thread_delete(args: ThreadIdArgs) -> CommandSpec {
@@ -1118,7 +1669,7 @@ fn assistant_thread_delete(args: ThreadIdArgs) -> CommandSpec {
 
 fn history_list(args: HistoryListArgs) -> CommandSpec {
     let mut argv = vec!["history".to_string(), "list".to_string()];
-    push_opt_u32(&mut argv, "--limit", args.limit);
+    push_opt_u64(&mut argv, "--limit", args.limit);
     command_spec(argv, OutputMode::JsonToToon)
 }
 
@@ -1153,6 +1704,255 @@ fn site_pref_remove(args: SitePrefDomainArgs) -> CommandSpec {
     command_spec(
         vec!["site-pref".to_string(), "remove".to_string(), args.domain],
         OutputMode::JsonToToon,
+    )
+}
+
+fn auth_set(args: AuthSetArgs) -> CommandSpec {
+    let mut argv = vec!["auth".to_string(), "set".to_string()];
+    push_opt_value(&mut argv, "--api-token", args.api_token);
+    push_opt_value(&mut argv, "--session-token", args.session_token);
+    command_spec(argv, OutputMode::Text)
+}
+
+fn lens_list() -> CommandSpec {
+    command_spec(
+        vec!["lens".to_string(), "list".to_string()],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn lens_get(args: LensTargetArgs) -> CommandSpec {
+    command_spec(
+        vec!["lens".to_string(), "get".to_string(), args.target],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn lens_create(args: LensCreateArgs) -> CommandSpec {
+    let mut argv = vec!["lens".to_string(), "create".to_string(), args.name];
+    push_lens_options(&mut argv, args.options);
+    command_spec(argv, OutputMode::JsonToToon)
+}
+
+fn lens_update(args: LensUpdateArgs) -> CommandSpec {
+    let mut argv = vec!["lens".to_string(), "update".to_string(), args.target];
+    push_opt_value(&mut argv, "--name", args.name);
+    push_lens_options(&mut argv, args.options);
+    command_spec(argv, OutputMode::JsonToToon)
+}
+
+fn lens_delete(args: LensTargetArgs) -> CommandSpec {
+    command_spec(
+        vec!["lens".to_string(), "delete".to_string(), args.target],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn lens_enable(args: LensTargetArgs) -> CommandSpec {
+    command_spec(
+        vec!["lens".to_string(), "enable".to_string(), args.target],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn lens_disable(args: LensTargetArgs) -> CommandSpec {
+    command_spec(
+        vec!["lens".to_string(), "disable".to_string(), args.target],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn assistant_custom_list() -> CommandSpec {
+    command_spec(
+        vec![
+            "assistant".to_string(),
+            "custom".to_string(),
+            "list".to_string(),
+        ],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn assistant_custom_get(args: AssistantCustomTargetArgs) -> CommandSpec {
+    command_spec(
+        vec![
+            "assistant".to_string(),
+            "custom".to_string(),
+            "get".to_string(),
+            args.target,
+        ],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn assistant_custom_create(args: AssistantCustomCreateArgs) -> CommandSpec {
+    let mut argv = vec![
+        "assistant".to_string(),
+        "custom".to_string(),
+        "create".to_string(),
+        args.name,
+    ];
+    push_assistant_custom_options(&mut argv, args.options);
+    command_spec(argv, OutputMode::JsonToToon)
+}
+
+fn assistant_custom_update(args: AssistantCustomUpdateArgs) -> CommandSpec {
+    let mut argv = vec![
+        "assistant".to_string(),
+        "custom".to_string(),
+        "update".to_string(),
+        args.target,
+    ];
+    push_opt_value(&mut argv, "--name", args.name);
+    push_assistant_custom_options(&mut argv, args.options);
+    command_spec(argv, OutputMode::JsonToToon)
+}
+
+fn assistant_custom_delete(args: AssistantCustomTargetArgs) -> CommandSpec {
+    command_spec(
+        vec![
+            "assistant".to_string(),
+            "custom".to_string(),
+            "delete".to_string(),
+            args.target,
+        ],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn bang_custom_list() -> CommandSpec {
+    command_spec(
+        vec!["bang".to_string(), "custom".to_string(), "list".to_string()],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn bang_custom_get(args: CustomBangTargetArgs) -> CommandSpec {
+    command_spec(
+        vec![
+            "bang".to_string(),
+            "custom".to_string(),
+            "get".to_string(),
+            args.target,
+        ],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn bang_custom_create(args: CustomBangCreateArgs) -> CommandSpec {
+    let mut argv = vec![
+        "bang".to_string(),
+        "custom".to_string(),
+        "create".to_string(),
+        args.name,
+        "--trigger".to_string(),
+        args.trigger,
+    ];
+    push_custom_bang_options(&mut argv, args.options);
+    command_spec(argv, OutputMode::JsonToToon)
+}
+
+fn bang_custom_update(args: CustomBangUpdateArgs) -> CommandSpec {
+    let mut argv = vec![
+        "bang".to_string(),
+        "custom".to_string(),
+        "update".to_string(),
+        args.target,
+    ];
+    push_opt_value(&mut argv, "--name", args.name);
+    push_opt_value(&mut argv, "--trigger", args.trigger);
+    push_custom_bang_options(&mut argv, args.options);
+    command_spec(argv, OutputMode::JsonToToon)
+}
+
+fn bang_custom_delete(args: CustomBangTargetArgs) -> CommandSpec {
+    command_spec(
+        vec![
+            "bang".to_string(),
+            "custom".to_string(),
+            "delete".to_string(),
+            args.target,
+        ],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn redirect_list() -> CommandSpec {
+    command_spec(
+        vec!["redirect".to_string(), "list".to_string()],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn redirect_get(args: RedirectTargetArgs) -> CommandSpec {
+    command_spec(
+        vec!["redirect".to_string(), "get".to_string(), args.target],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn redirect_create(args: RedirectCreateArgs) -> CommandSpec {
+    command_spec(
+        vec!["redirect".to_string(), "create".to_string(), args.rule],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn redirect_update(args: RedirectUpdateArgs) -> CommandSpec {
+    command_spec(
+        vec![
+            "redirect".to_string(),
+            "update".to_string(),
+            args.target,
+            args.rule,
+        ],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn redirect_delete(args: RedirectTargetArgs) -> CommandSpec {
+    command_spec(
+        vec!["redirect".to_string(), "delete".to_string(), args.target],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn redirect_enable(args: RedirectTargetArgs) -> CommandSpec {
+    command_spec(
+        vec!["redirect".to_string(), "enable".to_string(), args.target],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn redirect_disable(args: RedirectTargetArgs) -> CommandSpec {
+    command_spec(
+        vec!["redirect".to_string(), "disable".to_string(), args.target],
+        OutputMode::JsonToToon,
+    )
+}
+
+fn watch(args: WatchArgs) -> CommandSpec {
+    let mut argv = vec!["watch".to_string(), args.query];
+    push_opt_u64(&mut argv, "--interval", args.interval);
+    push_opt_u32(&mut argv, "--count", args.count);
+    push_opt_value(&mut argv, "--format", args.format);
+    command_spec(argv, OutputMode::Text)
+}
+
+fn notify(args: NotifyArgs) -> CommandSpec {
+    let mut argv = vec!["notify".to_string()];
+    push_opt_value(&mut argv, "--query", args.query);
+    push_opt_value(&mut argv, "--news-category", args.news_category);
+    argv.push("--webhook-url".to_string());
+    argv.push(args.webhook_url);
+    push_opt_flag(&mut argv, "--change-only", args.change_only);
+    command_spec(argv, OutputMode::JsonToToon)
+}
+
+fn generate_completion(args: CompletionArgs) -> CommandSpec {
+    command_spec(
+        vec!["--generate-completion".to_string(), args.shell],
+        OutputMode::Text,
     )
 }
 
@@ -1214,6 +2014,65 @@ fn push_repeated_value(argv: &mut Vec<String>, flag: &str, values: Vec<String>) 
     }
 }
 
+fn push_lens_options(argv: &mut Vec<String>, options: LensOptions) {
+    push_opt_value(argv, "--included-sites", options.included_sites);
+    push_opt_value(argv, "--included-keywords", options.included_keywords);
+    push_opt_value(argv, "--description", options.description);
+    push_opt_value(argv, "--region", options.region);
+    push_opt_value(argv, "--before-date", options.before_date);
+    push_opt_value(argv, "--after-date", options.after_date);
+    push_opt_value(argv, "--excluded-sites", options.excluded_sites);
+    push_opt_value(argv, "--excluded-keywords", options.excluded_keywords);
+    push_opt_value(argv, "--shortcut", options.shortcut);
+    push_opt_flag(
+        argv,
+        "--autocomplete-keywords",
+        options.autocomplete_keywords,
+    );
+    push_opt_flag(
+        argv,
+        "--no-autocomplete-keywords",
+        options.no_autocomplete_keywords,
+    );
+    push_opt_value(argv, "--template", options.template);
+    push_opt_value(argv, "--file-type", options.file_type);
+    push_opt_flag(argv, "--share-with-team", options.share_with_team);
+    push_opt_flag(argv, "--no-share-with-team", options.no_share_with_team);
+    push_opt_flag(argv, "--share-copy-code", options.share_copy_code);
+    push_opt_flag(argv, "--no-share-copy-code", options.no_share_copy_code);
+}
+
+fn push_assistant_custom_options(argv: &mut Vec<String>, options: AssistantCustomOptions) {
+    push_opt_value(argv, "--bang-trigger", options.bang_trigger);
+    push_opt_flag(argv, "--web-access", options.web_access);
+    push_opt_flag(argv, "--no-web-access", options.no_web_access);
+    push_opt_value(argv, "--lens", options.lens);
+    push_opt_flag(argv, "--personalized", options.personalized);
+    push_opt_flag(argv, "--no-personalized", options.no_personalized);
+    push_opt_value(argv, "--model", options.model);
+    push_opt_value(argv, "--instructions", options.instructions);
+}
+
+fn push_custom_bang_options(argv: &mut Vec<String>, options: CustomBangOptions) {
+    push_opt_value(argv, "--template", options.template);
+    push_opt_value(argv, "--snap-domain", options.snap_domain);
+    push_opt_value(argv, "--regex-pattern", options.regex_pattern);
+    push_opt_flag(argv, "--shortcut-menu", options.shortcut_menu);
+    push_opt_flag(argv, "--no-shortcut-menu", options.no_shortcut_menu);
+    push_opt_flag(argv, "--open-snap-domain", options.open_snap_domain);
+    push_opt_flag(argv, "--no-open-snap-domain", options.no_open_snap_domain);
+    push_opt_flag(argv, "--open-base-path", options.open_base_path);
+    push_opt_flag(argv, "--no-open-base-path", options.no_open_base_path);
+    push_opt_flag(argv, "--encode-placeholder", options.encode_placeholder);
+    push_opt_flag(
+        argv,
+        "--no-encode-placeholder",
+        options.no_encode_placeholder,
+    );
+    push_opt_flag(argv, "--plus-for-space", options.plus_for_space);
+    push_opt_flag(argv, "--no-plus-for-space", options.no_plus_for_space);
+}
+
 fn output_mode_for_format(format: Option<&str>) -> OutputMode {
     match format {
         None | Some("toon") => OutputMode::Toon,
@@ -1262,9 +2121,12 @@ mod tests {
             no_personalized: None,
             template: None,
             follow: None,
+            limit: None,
+            news: None,
             local_cache: None,
             cache_ttl: None,
             format: None,
+            no_color: None,
         }
     }
 
@@ -1297,6 +2159,20 @@ mod tests {
             no_web_access: None,
             personalized: None,
             no_personalized: None,
+            export: None,
+            no_color: None,
+        }
+    }
+
+    fn assistant_repl_args() -> AssistantReplArgs {
+        AssistantReplArgs {
+            prompts: Vec::new(),
+            thread_id: None,
+            assistant: None,
+            model: None,
+            format: None,
+            export: None,
+            no_color: None,
         }
     }
 
@@ -1318,6 +2194,8 @@ mod tests {
             personalized: None,
             no_personalized: None,
             template: None,
+            limit: None,
+            no_color: None,
         }
     }
 
@@ -1378,9 +2256,12 @@ mod tests {
         args.personalized = Some(true);
         args.template = Some("{{title}}".to_string());
         args.follow = Some(3);
+        args.limit = Some(5);
+        args.news = Some(true);
         args.local_cache = Some(true);
         args.cache_ttl = Some(600);
         args.format = Some("pretty".to_string());
+        args.no_color = Some(true);
 
         assert_eq!(
             search(args),
@@ -1400,11 +2281,15 @@ mod tests {
                     "{{title}}",
                     "--follow",
                     "3",
+                    "--limit",
+                    "5",
+                    "--news",
                     "--local-cache",
                     "--cache-ttl",
                     "600",
                     "--format",
                     "pretty",
+                    "--no-color",
                 ]),
                 stdin: None,
                 output_mode: OutputMode::Text,
@@ -1444,6 +2329,8 @@ mod tests {
         args.region = Some("us".to_string());
         args.verbatim = Some(true);
         args.template = Some("{{url}}".to_string());
+        args.limit = Some(10);
+        args.no_color = Some(true);
 
         assert_eq!(
             batch(args),
@@ -1458,6 +2345,9 @@ mod tests {
                     "--verbatim",
                     "--template",
                     "{{url}}",
+                    "--limit",
+                    "10",
+                    "--no-color",
                 ]),
                 stdin: Some("zig\ngo\n".to_string()),
                 output_mode: OutputMode::Text,
@@ -1490,6 +2380,8 @@ mod tests {
         args.lens = Some(42);
         args.no_web_access = Some(true);
         args.no_personalized = Some(true);
+        args.export = Some("assistant.json".to_string());
+        args.no_color = Some(true);
 
         assert_eq!(
             assistant(args),
@@ -1505,12 +2397,15 @@ mod tests {
                     "researcher",
                     "--format",
                     "markdown",
+                    "--no-color",
                     "--model",
                     "cecil",
                     "--lens",
                     "42",
                     "--no-web-access",
                     "--no-personalized",
+                    "--export",
+                    "assistant.json",
                 ]),
                 stdin: None,
                 output_mode: OutputMode::Text,
@@ -1529,6 +2424,74 @@ mod tests {
                 args: strings(&["assistant", "explain rust", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
+            }
+        );
+    }
+
+    #[test]
+    fn builds_assistant_repl_with_controlled_stdin() {
+        let mut args = assistant_repl_args();
+        args.prompts = strings(&["first", "second"]);
+        args.thread_id = Some("thread_1".to_string());
+        args.assistant = Some("researcher".to_string());
+        args.model = Some("cecil".to_string());
+        args.format = Some("markdown".to_string());
+        args.export = Some("transcript.json".to_string());
+        args.no_color = Some(true);
+
+        assert_eq!(
+            assistant_repl(args),
+            CommandSpec {
+                args: strings(&[
+                    "assistant",
+                    "repl",
+                    "--thread-id",
+                    "thread_1",
+                    "--assistant",
+                    "researcher",
+                    "--model",
+                    "cecil",
+                    "--format",
+                    "markdown",
+                    "--export",
+                    "transcript.json",
+                    "--no-color",
+                ]),
+                stdin: Some("first\nsecond\n/exit\n".to_string()),
+                output_mode: OutputMode::Text,
+            }
+        );
+    }
+
+    #[test]
+    fn builds_assistant_thread_export_modes() {
+        assert_eq!(
+            assistant_thread_export(ThreadExportArgs {
+                thread_id: "thread_1".to_string(),
+                format: None,
+            }),
+            CommandSpec {
+                args: strings(&["assistant", "thread", "export", "thread_1"]),
+                stdin: None,
+                output_mode: OutputMode::Text,
+            }
+        );
+        assert_eq!(
+            assistant_thread_export(ThreadExportArgs {
+                thread_id: "thread_1".to_string(),
+                format: Some("json".to_string()),
+            }),
+            CommandSpec {
+                args: strings(&[
+                    "assistant",
+                    "thread",
+                    "export",
+                    "thread_1",
+                    "--format",
+                    "json",
+                ]),
+                stdin: None,
+                output_mode: OutputMode::JsonToToon,
             }
         );
     }
@@ -1560,6 +2523,202 @@ mod tests {
                 args: strings(&["site-pref", "set", "example.com", "--mode", "higher"]),
                 stdin: None,
                 output_mode: OutputMode::JsonToToon,
+            }
+        );
+    }
+
+    #[test]
+    fn builds_extract_command() {
+        assert_eq!(
+            extract(ExtractArgs {
+                url: "https://example.com".to_string(),
+            }),
+            CommandSpec {
+                args: strings(&["extract", "https://example.com"]),
+                stdin: None,
+                output_mode: OutputMode::Text,
+            }
+        );
+    }
+
+    #[test]
+    fn builds_lens_commands() {
+        assert_eq!(
+            lens_list(),
+            CommandSpec {
+                args: strings(&["lens", "list"]),
+                stdin: None,
+                output_mode: OutputMode::JsonToToon,
+            }
+        );
+
+        let spec = lens_create(LensCreateArgs {
+            name: "Rust".to_string(),
+            options: LensOptions {
+                included_sites: Some("doc.rust-lang.org".to_string()),
+                shortcut: Some("rs".to_string()),
+                no_share_with_team: Some(true),
+                ..LensOptions::default()
+            },
+        });
+        assert_eq!(
+            spec.args,
+            strings(&[
+                "lens",
+                "create",
+                "Rust",
+                "--included-sites",
+                "doc.rust-lang.org",
+                "--shortcut",
+                "rs",
+                "--no-share-with-team",
+            ])
+        );
+    }
+
+    #[test]
+    fn builds_assistant_custom_commands() {
+        let spec = assistant_custom_update(AssistantCustomUpdateArgs {
+            target: "Researcher".to_string(),
+            name: Some("Research Pro".to_string()),
+            options: AssistantCustomOptions {
+                bang_trigger: Some("research".to_string()),
+                no_web_access: Some(true),
+                model: Some("cecil".to_string()),
+                instructions: Some("Be concise".to_string()),
+                ..AssistantCustomOptions::default()
+            },
+        });
+        assert_eq!(
+            spec.args,
+            strings(&[
+                "assistant",
+                "custom",
+                "update",
+                "Researcher",
+                "--name",
+                "Research Pro",
+                "--bang-trigger",
+                "research",
+                "--no-web-access",
+                "--model",
+                "cecil",
+                "--instructions",
+                "Be concise",
+            ])
+        );
+    }
+
+    #[test]
+    fn builds_custom_bang_commands() {
+        let spec = bang_custom_create(CustomBangCreateArgs {
+            name: "Rust docs".to_string(),
+            trigger: "rs".to_string(),
+            options: CustomBangOptions {
+                template: Some("https://doc.rust-lang.org/std/?search=%s".to_string()),
+                shortcut_menu: Some(true),
+                plus_for_space: Some(true),
+                ..CustomBangOptions::default()
+            },
+        });
+        assert_eq!(
+            spec.args,
+            strings(&[
+                "bang",
+                "custom",
+                "create",
+                "Rust docs",
+                "--trigger",
+                "rs",
+                "--template",
+                "https://doc.rust-lang.org/std/?search=%s",
+                "--shortcut-menu",
+                "--plus-for-space",
+            ])
+        );
+    }
+
+    #[test]
+    fn builds_redirect_watch_notify_and_auth_set_commands() {
+        assert_eq!(
+            redirect_update(RedirectUpdateArgs {
+                target: "old".to_string(),
+                rule: "old|new".to_string(),
+            }),
+            CommandSpec {
+                args: strings(&["redirect", "update", "old", "old|new"]),
+                stdin: None,
+                output_mode: OutputMode::JsonToToon,
+            }
+        );
+        assert_eq!(
+            watch(WatchArgs {
+                query: "rust".to_string(),
+                interval: Some(5),
+                count: Some(2),
+                format: Some("json".to_string()),
+            }),
+            CommandSpec {
+                args: strings(&[
+                    "watch",
+                    "rust",
+                    "--interval",
+                    "5",
+                    "--count",
+                    "2",
+                    "--format",
+                    "json",
+                ]),
+                stdin: None,
+                output_mode: OutputMode::Text,
+            }
+        );
+        assert_eq!(
+            notify(NotifyArgs {
+                query: Some("rust".to_string()),
+                news_category: None,
+                webhook_url: "https://hooks.example".to_string(),
+                change_only: Some(true),
+            }),
+            CommandSpec {
+                args: strings(&[
+                    "notify",
+                    "--query",
+                    "rust",
+                    "--webhook-url",
+                    "https://hooks.example",
+                    "--change-only",
+                ]),
+                stdin: None,
+                output_mode: OutputMode::JsonToToon,
+            }
+        );
+        assert_eq!(
+            auth_set(AuthSetArgs {
+                api_token: Some("api".to_string()),
+                session_token: Some("session".to_string()),
+            }),
+            CommandSpec {
+                args: strings(&[
+                    "auth",
+                    "set",
+                    "--api-token",
+                    "api",
+                    "--session-token",
+                    "session",
+                ]),
+                stdin: None,
+                output_mode: OutputMode::Text,
+            }
+        );
+        assert_eq!(
+            generate_completion(CompletionArgs {
+                shell: "bash".to_string(),
+            }),
+            CommandSpec {
+                args: strings(&["--generate-completion", "bash"]),
+                stdin: None,
+                output_mode: OutputMode::Text,
             }
         );
     }
