@@ -14,11 +14,12 @@ It is intentionally just an extra repo:
 
 ## Requirements
 
-- `kagi-cli` v0.6.1 or newer
+- `kagi-cli` v0.7.0 or newer
 - A working `kagi` binary on `PATH`, or `KAGI_CLI_PATH` pointing to it
 - Kagi credentials provided through environment variables
-  - `KAGI_SESSION_TOKEN` - for subscriber features (search, quick, assistant, translate, etc.)
-  - `KAGI_API_TOKEN` - for paid API features (summarize, extract, fastgpt, enrich)
+  - `KAGI_SESSION_TOKEN` - for subscriber features (search, quick, assistant, translate)
+  - `KAGI_API_KEY` - for current `/api/v1` paid API features (search, extract)
+  - `KAGI_API_TOKEN` - for legacy `/api/v0` paid API features (summarize, fastgpt, enrich)
 
 Set `KAGI_CLI_PROFILE` when you want every wrapped CLI call to use a named `.kagi.toml` profile. Environment variables are still the recommended MCP auth path because they are explicit in the MCP server config and do not depend on the server process working directory.
 
@@ -33,6 +34,7 @@ cargo build --release
 ```bash
 KAGI_CLI_PATH=/path/to/kagi \
 KAGI_SESSION_TOKEN=... \
+KAGI_API_KEY=... \
 KAGI_API_TOKEN=... \
 ./target/release/kagi-mcp
 ```
@@ -55,6 +57,7 @@ Optional environment variables:
       "env": {
         "KAGI_CLI_PATH": "/path/to/kagi",
         "KAGI_SESSION_TOKEN": "your-session-token",
+        "KAGI_API_KEY": "your-api-key",
         "KAGI_API_TOKEN": "your-api-token"
       }
     }
@@ -110,7 +113,7 @@ Optional environment variables:
 
 | Tool | Description |
 |------|-------------|
-| `kagi_extract` | Extract a page's full content as markdown through Kagi's paid Extract API |
+| `kagi_extract` | Extract a page's full content as markdown through Kagi's paid Extract API, using `KAGI_API_KEY` directly |
 
 ### News
 
@@ -177,32 +180,32 @@ The wrapped CLI's `kagi mcp` subcommand is not exposed as a tool because this bi
 
 ## Auth Model
 
-| Tool | Session Token | API Token | None |
-|------|:---:|:---:|:---:|
-| `kagi_search` | yes | yes | |
-| `kagi_search --lens` | yes | | |
-| `kagi_quick` | yes | | |
-| `kagi_ask_page` | yes | | |
-| `kagi_assistant` | yes | | |
-| `kagi_assistant_repl` | yes | | |
-| `kagi_translate` | yes | | |
-| `kagi_summarize --subscriber` | yes | | |
-| `kagi_summarize` | | yes | |
-| `kagi_extract` | | yes | |
-| `kagi_fastgpt` | | yes | |
-| `kagi_enrich_web/news` | | yes | |
-| `kagi_lens_*` | yes | | |
-| `kagi_bang_custom_*` | yes | | |
-| `kagi_redirect_*` | yes | | |
-| `kagi_assistant_custom_*` | yes | | |
-| `kagi_watch` | yes | yes | |
-| `kagi_notify` | yes | yes | |
-| `kagi_news` | | | yes |
-| `kagi_smallweb` | | | yes |
-| `kagi_history_list/stats` | | | yes |
-| `kagi_site_pref_*` | | | yes |
-| `kagi_generate_completion` | | | yes |
-| `kagi_auth_status/check/set` | | | yes |
+| Tool | Session Token | API Key | API Token | None |
+|------|:---:|:---:|:---:|:---:|
+| `kagi_search` | yes | yes | | |
+| `kagi_search --lens` | yes | | | |
+| `kagi_quick` | yes | | | |
+| `kagi_ask_page` | yes | | | |
+| `kagi_assistant` | yes | | | |
+| `kagi_assistant_repl` | yes | | | |
+| `kagi_translate` | yes | | | |
+| `kagi_summarize --subscriber` | yes | | | |
+| `kagi_summarize` | | | yes | |
+| `kagi_extract` | | yes | | |
+| `kagi_fastgpt` | | | yes | |
+| `kagi_enrich_web/news` | | | yes | |
+| `kagi_lens_*` | yes | | | |
+| `kagi_bang_custom_*` | yes | | | |
+| `kagi_redirect_*` | yes | | | |
+| `kagi_assistant_custom_*` | yes | | | |
+| `kagi_watch` | yes | yes | | |
+| `kagi_notify` | yes | yes | | |
+| `kagi_news` | | | | yes |
+| `kagi_smallweb` | | | | yes |
+| `kagi_history_list/stats` | | | | yes |
+| `kagi_site_pref_*` | | | | yes |
+| `kagi_generate_completion` | | | | yes |
+| `kagi_auth_status/check/set` | | | | yes |
 
 ## Architecture
 

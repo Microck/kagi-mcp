@@ -2542,6 +2542,15 @@ mod tests {
     }
 
     #[test]
+    fn tool_router_exposes_extract() {
+        let tools = KagiServer::tool_router().list_all();
+        assert!(
+            tools.iter().any(|tool| tool.name == "kagi_extract"),
+            "expected kagi_extract in tool router, got {tools:?}"
+        );
+    }
+
+    #[test]
     fn builds_lens_commands() {
         assert_eq!(
             lens_list(),
