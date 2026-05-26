@@ -14,7 +14,7 @@ It is intentionally just an extra repo:
 
 ## Requirements
 
-- `kagi-cli` v0.7.0 or newer
+- `kagi-cli` v0.8.1 or newer
 - A working `kagi` binary on `PATH`, or `KAGI_CLI_PATH` pointing to it
 - Kagi credentials provided through environment variables
   - `KAGI_SESSION_TOKEN` - for subscriber features (search, quick, assistant, translate)
@@ -22,6 +22,8 @@ It is intentionally just an extra repo:
   - `KAGI_API_TOKEN` - for legacy `/api/v0` paid API features (summarize, fastgpt, enrich)
 
 Set `KAGI_CLI_PROFILE` when you want every wrapped CLI call to use a named `.kagi.toml` profile. Environment variables are still the recommended MCP auth path because they are explicit in the MCP server config and do not depend on the server process working directory.
+
+`kagi-mcp` delegates all Kagi requests to the configured `kagi` binary. The V1 API path, including paid API search/extract with `KAGI_API_KEY` and the current search filters, comes from `kagi-cli` v0.8.1+.
 
 ## Build
 
