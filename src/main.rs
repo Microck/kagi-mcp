@@ -1,4 +1,10 @@
-use std::{env, error::Error, path::PathBuf, time::Duration};
+use std::{
+    env,
+    error::Error,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use rmcp::{
     ErrorData as McpError, ServerHandler, ServiceExt,
@@ -18,6 +24,12 @@ const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 const CLI_PATH_ENV: &str = "KAGI_CLI_PATH";
 const CLI_PROFILE_ENV: &str = "KAGI_CLI_PROFILE";
 const TIMEOUT_ENV: &str = "KAGI_MCP_TIMEOUT_MS";
+const STEALTH_ENV: &str = "KAGI_MCP_STEALTH";
+
+const DEFAULT_JITTER_BASE_MS: u64 = 800;
+const DEFAULT_JITTER_SPREAD_MS: u64 = 1200;
+const DEFAULT_MIN_INTERVAL_MS: u64 = 1500;
+const DEFAULT_STEALTH_CACHE_TTL_SECS: u64 = 600;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OutputMode {
@@ -27,11 +39,78 @@ enum OutputMode {
     Text,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum PrivacyMode {
+    Unpersonalized,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum StealthMode {
+    On,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CommandSpec {
     args: Vec<String>,
     stdin: Option<String>,
     output_mode: OutputMode,
+    profile_override: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct StealthConfig {
+    enabled: bool,
+    jitter_base_ms: u64,
+    jitter_spread_ms: u64,
+    min_interval_ms: u64,
+    #[expect(dead_code)]
+    default_cache_ttl_secs: u64,
+}
+
+impl StealthConfig {
+    fn disabled() -> Self {
+        Self {
+            enabled: false,
+            jitter_base_ms: DEFAULT_JITTER_BASE_MS,
+            jitter_spread_ms: DEFAULT_JITTER_SPREAD_MS,
+            min_interval_ms: DEFAULT_MIN_INTERVAL_MS,
+            default_cache_ttl_secs: DEFAULT_STEALTH_CACHE_TTL_SECS,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct RateLimiter {
+    last_call: Mutex<Option<Instant>>,
+    min_interval: Duration,
+}
+
+impl RateLimiter {
+    fn new(min_interval: Duration) -> Self {
+        Self {
+            last_call: Mutex::new(None),
+            min_interval,
+        }
+    }
+
+    async fn throttle(&self) {
+        let now = Instant::now();
+        let sleep_dur = {
+            let guard = self.last_call.lock().unwrap();
+            match *guard {
+                Some(last) if now.duration_since(last) < self.min_interval => {
+                    self.min_interval - now.duration_since(last)
+                }
+                _ => Duration::ZERO,
+            }
+        };
+        if !sleep_dur.is_zero() {
+            tokio::time::sleep(sleep_dur).await;
+        }
+        *self.last_call.lock().unwrap() = Some(Instant::now());
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +118,8 @@ struct CliRunner {
     cli_path: PathBuf,
     profile: Option<String>,
     timeout: Duration,
+    stealth: StealthConfig,
+    limiter: Arc<RateLimiter>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -96,6 +177,15 @@ struct SearchArgs {
     /// Force personalized search off.
     #[serde(default)]
     no_personalized: Option<bool>,
+    /// Optional privacy preset. "unpersonalized" disables personalization and defaults region to no_region.
+    #[serde(default)]
+    privacy_mode: Option<PrivacyMode>,
+    /// Enable stealth mode for this request. Adds jitter, caching, and rate limiting.
+    #[serde(default)]
+    stealth_mode: Option<StealthMode>,
+    /// Per-call CLI profile override. Takes precedence over KAGI_CLI_PROFILE.
+    #[serde(default)]
+    profile: Option<String>,
     /// Render each result with a lightweight template.
     #[serde(default)]
     template: Option<String>,
@@ -438,6 +528,15 @@ struct BatchArgs {
     /// Force personalized search off for all batch requests.
     #[serde(default)]
     no_personalized: Option<bool>,
+    /// Optional privacy preset. "unpersonalized" disables personalization and defaults region to no_region.
+    #[serde(default)]
+    privacy_mode: Option<PrivacyMode>,
+    /// Enable stealth mode for this request. Adds jitter, caching, and rate limiting.
+    #[serde(default)]
+    stealth_mode: Option<StealthMode>,
+    /// Per-call CLI profile override. Takes precedence over KAGI_CLI_PROFILE.
+    #[serde(default)]
+    profile: Option<String>,
     /// Render each result with a lightweight template.
     #[serde(default)]
     template: Option<String>,
@@ -770,10 +869,34 @@ impl CliRunner {
             Err(_) => Duration::from_millis(DEFAULT_TIMEOUT_MS),
         };
 
+        let stealth_enabled = env::var(STEALTH_ENV)
+            .map(|v| !v.is_empty() && v != "0" && v.to_lowercase() != "false")
+            .unwrap_or(false);
+
+        let stealth = if stealth_enabled {
+            StealthConfig {
+                enabled: true,
+                jitter_base_ms: DEFAULT_JITTER_BASE_MS,
+                jitter_spread_ms: DEFAULT_JITTER_SPREAD_MS,
+                min_interval_ms: DEFAULT_MIN_INTERVAL_MS,
+                default_cache_ttl_secs: DEFAULT_STEALTH_CACHE_TTL_SECS,
+            }
+        } else {
+            StealthConfig::disabled()
+        };
+
+        let min_interval = if stealth.enabled {
+            Duration::from_millis(stealth.min_interval_ms)
+        } else {
+            Duration::ZERO
+        };
+
         Ok(Self {
             cli_path,
             profile,
             timeout,
+            stealth,
+            limiter: Arc::new(RateLimiter::new(min_interval)),
         })
     }
 
@@ -783,6 +906,8 @@ impl CliRunner {
             cli_path,
             profile: None,
             timeout,
+            stealth: StealthConfig::disabled(),
+            limiter: Arc::new(RateLimiter::new(Duration::ZERO)),
         }
     }
 
@@ -792,13 +917,50 @@ impl CliRunner {
             cli_path,
             profile: Some(profile),
             timeout,
+            stealth: StealthConfig::disabled(),
+            limiter: Arc::new(RateLimiter::new(Duration::ZERO)),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_stealthy(cli_path: PathBuf, timeout: Duration) -> Self {
+        let stealth = StealthConfig {
+            enabled: true,
+            jitter_base_ms: 1,
+            jitter_spread_ms: 1,
+            min_interval_ms: 1,
+            default_cache_ttl_secs: 60,
+        };
+        Self {
+            cli_path,
+            profile: None,
+            timeout,
+            stealth,
+            limiter: Arc::new(RateLimiter::new(Duration::from_millis(1))),
         }
     }
 
     async fn run(&self, spec: CommandSpec) -> Result<CommandOutput, RunnerError> {
+        // Rate-limit to enforce minimum interval between calls.
+        self.limiter.throttle().await;
+
+        // Add deterministic jitter based on args hash to break machine-rhythmic patterns.
+        if self.stealth.enabled {
+            let spread = self.stealth.jitter_spread_ms;
+            if spread > 0 {
+                let hash = spec.args.iter().fold(0u64, |acc, s| {
+                    acc.wrapping_add(s.bytes().map(|b| b as u64).sum::<u64>())
+                });
+                let jitter_ms = self.stealth.jitter_base_ms + (hash % spread);
+                tokio::time::sleep(Duration::from_millis(jitter_ms)).await;
+            }
+        }
+
         let path_display = self.cli_path.display().to_string();
         let mut command = Command::new(&self.cli_path);
-        if let Some(profile) = &self.profile {
+        // Per-call profile takes precedence, then runner default.
+        let effective_profile = spec.profile_override.as_deref().or(self.profile.as_deref());
+        if let Some(profile) = effective_profile {
             command.args(["--profile", profile]);
         }
         command
@@ -1346,12 +1508,26 @@ impl ServerHandler for KagiServer {
     }
 }
 
-fn search(args: SearchArgs) -> CommandSpec {
+fn search(mut args: SearchArgs) -> CommandSpec {
     let output_mode = if args.template.is_some() {
         OutputMode::Text
     } else {
         output_mode_for_format(args.format.as_deref())
     };
+    let stealth_active = args.stealth_mode == Some(StealthMode::On);
+    let is_news = args.news == Some(true);
+    apply_privacy_mode(
+        args.privacy_mode,
+        &mut args.region,
+        args.personalized,
+        &mut args.no_personalized,
+        !is_news,
+    );
+    // Stealth mode auto-enables local caching with a generous TTL.
+    if stealth_active {
+        args.local_cache.get_or_insert(true);
+        args.cache_ttl.get_or_insert(DEFAULT_STEALTH_CACHE_TTL_SECS);
+    }
     let mut argv = vec!["search".to_string(), args.query];
     push_opt_value(&mut argv, "--snap", args.snap);
     push_opt_value(&mut argv, "--lens", args.lens);
@@ -1371,7 +1547,9 @@ fn search(args: SearchArgs) -> CommandSpec {
     push_opt_u64(&mut argv, "--cache-ttl", args.cache_ttl);
     push_cli_format(&mut argv, args.format, output_mode);
     push_opt_flag(&mut argv, "--no-color", args.no_color);
-    command_spec(argv, output_mode)
+    let mut spec = command_spec(argv, output_mode);
+    spec.profile_override = args.profile;
+    spec
 }
 
 fn summarize(args: SummarizeArgs) -> CommandSpec {
@@ -1399,6 +1577,7 @@ fn summarize(args: SummarizeArgs) -> CommandSpec {
         args: argv,
         stdin,
         output_mode: OutputMode::JsonToToon,
+        profile_override: None,
     }
 }
 
@@ -1472,6 +1651,7 @@ fn assistant_repl(args: AssistantReplArgs) -> CommandSpec {
         args: argv,
         stdin: Some(stdin),
         output_mode: OutputMode::Text,
+        profile_override: None,
     }
 }
 
@@ -1574,12 +1754,25 @@ fn translate(args: TranslateArgs) -> CommandSpec {
     command_spec(argv, OutputMode::JsonToToon)
 }
 
-fn batch(args: BatchArgs) -> CommandSpec {
+fn batch(mut args: BatchArgs) -> CommandSpec {
     let output_mode = if args.template.is_some() {
         OutputMode::Text
     } else {
         output_mode_for_format(args.format.as_deref())
     };
+    let stealth_active = args.stealth_mode == Some(StealthMode::On);
+    apply_privacy_mode(
+        args.privacy_mode,
+        &mut args.region,
+        args.personalized,
+        &mut args.no_personalized,
+        true,
+    );
+    // Stealth mode caps concurrency and rate limiting.
+    if stealth_active {
+        args.concurrency.get_or_insert(1);
+        args.rate_limit.get_or_insert(20);
+    }
     let mut argv = vec!["batch".to_string()];
     argv.extend(args.queries);
     push_opt_u64(&mut argv, "--concurrency", args.concurrency);
@@ -1607,6 +1800,7 @@ fn batch(args: BatchArgs) -> CommandSpec {
         args: argv,
         stdin,
         output_mode,
+        profile_override: args.profile,
     }
 }
 
@@ -1961,6 +2155,25 @@ fn command_spec(args: Vec<String>, output_mode: OutputMode) -> CommandSpec {
         args,
         stdin: None,
         output_mode,
+        profile_override: None,
+    }
+}
+
+fn apply_privacy_mode(
+    privacy_mode: Option<PrivacyMode>,
+    region: &mut Option<String>,
+    personalized: Option<bool>,
+    no_personalized: &mut Option<bool>,
+    allow_no_personalized: bool,
+) {
+    match privacy_mode {
+        Some(PrivacyMode::Unpersonalized) => {
+            region.get_or_insert_with(|| "no_region".to_string());
+            if allow_no_personalized && personalized != Some(true) && no_personalized.is_none() {
+                *no_personalized = Some(true);
+            }
+        }
+        None => {}
     }
 }
 
@@ -2119,6 +2332,9 @@ mod tests {
             verbatim: None,
             personalized: None,
             no_personalized: None,
+            privacy_mode: None,
+            stealth_mode: None,
+            profile: None,
             template: None,
             follow: None,
             limit: None,
@@ -2193,6 +2409,9 @@ mod tests {
             verbatim: None,
             personalized: None,
             no_personalized: None,
+            privacy_mode: None,
+            stealth_mode: None,
+            profile: None,
             template: None,
             limit: None,
             no_color: None,
@@ -2227,6 +2446,7 @@ mod tests {
                 args: strings(&["search", "rust", "--lens", "2", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
+                profile_override: None,
             }
         );
     }
@@ -2242,6 +2462,7 @@ mod tests {
                 args: strings(&["search", "rust", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
+                profile_override: None,
             }
         );
     }
@@ -2293,6 +2514,7 @@ mod tests {
                 ]),
                 stdin: None,
                 output_mode: OutputMode::Text,
+                profile_override: None,
             }
         );
     }
@@ -2316,6 +2538,7 @@ mod tests {
                 ]),
                 stdin: Some("https://example.com/a\nplain text\n".to_string()),
                 output_mode: OutputMode::JsonToToon,
+                profile_override: None,
             }
         );
     }
@@ -2351,6 +2574,7 @@ mod tests {
                 ]),
                 stdin: Some("zig\ngo\n".to_string()),
                 output_mode: OutputMode::Text,
+                profile_override: None,
             }
         );
     }
@@ -2366,6 +2590,7 @@ mod tests {
                 args: strings(&["batch", "rust", "zig", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
+                profile_override: None,
             }
         );
     }
@@ -2409,6 +2634,7 @@ mod tests {
                 ]),
                 stdin: None,
                 output_mode: OutputMode::Text,
+                profile_override: None,
             }
         );
     }
@@ -2424,6 +2650,7 @@ mod tests {
                 args: strings(&["assistant", "explain rust", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
+                profile_override: None,
             }
         );
     }
@@ -2459,6 +2686,7 @@ mod tests {
                 ]),
                 stdin: Some("first\nsecond\n/exit\n".to_string()),
                 output_mode: OutputMode::Text,
+                profile_override: None,
             }
         );
     }
@@ -2474,6 +2702,7 @@ mod tests {
                 args: strings(&["assistant", "thread", "export", "thread_1"]),
                 stdin: None,
                 output_mode: OutputMode::Text,
+                profile_override: None,
             }
         );
         assert_eq!(
@@ -2492,6 +2721,7 @@ mod tests {
                 ]),
                 stdin: None,
                 output_mode: OutputMode::JsonToToon,
+                profile_override: None,
             }
         );
     }
@@ -2504,6 +2734,7 @@ mod tests {
                 args: strings(&["history", "list", "--limit", "5"]),
                 stdin: None,
                 output_mode: OutputMode::JsonToToon,
+                profile_override: None,
             }
         );
         assert_eq!(
@@ -2512,6 +2743,7 @@ mod tests {
                 args: strings(&["history", "stats"]),
                 stdin: None,
                 output_mode: OutputMode::JsonToToon,
+                profile_override: None,
             }
         );
         assert_eq!(
@@ -2523,6 +2755,7 @@ mod tests {
                 args: strings(&["site-pref", "set", "example.com", "--mode", "higher"]),
                 stdin: None,
                 output_mode: OutputMode::JsonToToon,
+                profile_override: None,
             }
         );
     }
@@ -2537,6 +2770,7 @@ mod tests {
                 args: strings(&["extract", "https://example.com"]),
                 stdin: None,
                 output_mode: OutputMode::Text,
+                profile_override: None,
             }
         );
     }
@@ -2558,6 +2792,7 @@ mod tests {
                 args: strings(&["lens", "list"]),
                 stdin: None,
                 output_mode: OutputMode::JsonToToon,
+                profile_override: None,
             }
         );
 
@@ -2658,6 +2893,7 @@ mod tests {
                 args: strings(&["redirect", "update", "old", "old|new"]),
                 stdin: None,
                 output_mode: OutputMode::JsonToToon,
+                profile_override: None,
             }
         );
         assert_eq!(
@@ -2680,6 +2916,7 @@ mod tests {
                 ]),
                 stdin: None,
                 output_mode: OutputMode::Text,
+                profile_override: None,
             }
         );
         assert_eq!(
@@ -2700,6 +2937,7 @@ mod tests {
                 ]),
                 stdin: None,
                 output_mode: OutputMode::JsonToToon,
+                profile_override: None,
             }
         );
         assert_eq!(
@@ -2718,6 +2956,7 @@ mod tests {
                 ]),
                 stdin: None,
                 output_mode: OutputMode::Text,
+                profile_override: None,
             }
         );
         assert_eq!(
@@ -2728,6 +2967,7 @@ mod tests {
                 args: strings(&["--generate-completion", "bash"]),
                 stdin: None,
                 output_mode: OutputMode::Text,
+                profile_override: None,
             }
         );
     }
@@ -2746,6 +2986,7 @@ mod tests {
                 args: vec!["search".to_string(), "rust".to_string()],
                 stdin: None,
                 output_mode: OutputMode::Json,
+                profile_override: None,
             })
             .await
             .expect("json output should parse");
@@ -2773,6 +3014,7 @@ mod tests {
                 args: strings(&["search", "rust", "--format", "json"]),
                 stdin: None,
                 output_mode: OutputMode::JsonToToon,
+                profile_override: None,
             })
             .await
             .expect("json output should convert to TOON");
@@ -2798,6 +3040,7 @@ mod tests {
                 args: strings(&["search", "rust", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
+                profile_override: None,
             })
             .await
             .expect("native CLI TOON should pass through");
@@ -2823,6 +3066,7 @@ mod tests {
                 args: strings(&["search", "rust"]),
                 stdin: None,
                 output_mode: OutputMode::Json,
+                profile_override: None,
             })
             .await
             .expect("profile-prefixed json output should parse");
@@ -2849,6 +3093,7 @@ mod tests {
                 args: vec!["search".to_string(), "rust".to_string()],
                 stdin: None,
                 output_mode: OutputMode::Json,
+                profile_override: None,
             })
             .await
             .expect_err("runner should return CLI failure");
@@ -2882,6 +3127,7 @@ fi
                 args: strings(&["search", "rust"]),
                 stdin: None,
                 output_mode: OutputMode::Json,
+                profile_override: None,
             })
             .await
             .expect("null stdin should parse");
@@ -2890,6 +3136,7 @@ fi
                 args: strings(&["summarize", "--filter"]),
                 stdin: Some("one\ntwo\n".to_string()),
                 output_mode: OutputMode::Json,
+                profile_override: None,
             })
             .await
             .expect("controlled stdin should parse");
@@ -2919,5 +3166,175 @@ fi
         assert_eq!(output_mode_for_format(None), OutputMode::Toon);
         assert_eq!(output_mode_for_format(Some("toon")), OutputMode::Toon);
         assert_eq!(output_mode_for_format(Some("json")), OutputMode::Json);
+    }
+
+    #[test]
+    fn builds_search_with_privacy_mode() {
+        let mut args = search_args("rust");
+        args.privacy_mode = Some(PrivacyMode::Unpersonalized);
+        let spec = search(args);
+        assert!(spec.args.contains(&"--no-personalized".to_string()));
+        assert!(spec.args.contains(&"--region".to_string()));
+        assert!(spec.args.contains(&"no_region".to_string()));
+    }
+
+    #[test]
+    fn builds_search_privacy_mode_preserves_explicit_region() {
+        let mut args = search_args("rust");
+        args.region = Some("us".to_string());
+        args.privacy_mode = Some(PrivacyMode::Unpersonalized);
+        let spec = search(args);
+        assert!(spec.args.contains(&"--region".to_string()));
+        assert!(spec.args.contains(&"us".to_string()));
+        assert!(!spec.args.contains(&"no_region".to_string()));
+    }
+
+    #[test]
+    fn builds_search_privacy_mode_avoids_news_conflict() {
+        let mut args = search_args("rust");
+        args.news = Some(true);
+        args.privacy_mode = Some(PrivacyMode::Unpersonalized);
+        let spec = search(args);
+        assert!(!spec.args.contains(&"--no-personalized".to_string()));
+        assert!(spec.args.contains(&"--region".to_string()));
+        assert!(spec.args.contains(&"no_region".to_string()));
+    }
+
+    #[test]
+    fn builds_search_stealth_mode_enables_cache() {
+        let mut args = search_args("rust");
+        args.stealth_mode = Some(StealthMode::On);
+        let spec = search(args);
+        assert!(spec.args.contains(&"--local-cache".to_string()));
+        assert!(spec.args.contains(&"--cache-ttl".to_string()));
+    }
+
+    #[test]
+    fn builds_search_with_profile_override() {
+        let mut args = search_args("rust");
+        args.profile = Some("alt-profile".to_string());
+        let spec = search(args);
+        assert_eq!(spec.profile_override, Some("alt-profile".to_string()));
+    }
+
+    #[test]
+    fn builds_batch_with_privacy_mode() {
+        let mut args = batch_args();
+        args.queries = strings(&["rust"]);
+        args.privacy_mode = Some(PrivacyMode::Unpersonalized);
+        let spec = batch(args);
+        assert!(spec.args.contains(&"--no-personalized".to_string()));
+        assert!(spec.args.contains(&"--region".to_string()));
+        assert!(spec.args.contains(&"no_region".to_string()));
+    }
+
+    #[test]
+    fn builds_batch_stealth_mode_caps_concurrency() {
+        let mut args = batch_args();
+        args.queries = strings(&["rust"]);
+        args.stealth_mode = Some(StealthMode::On);
+        let spec = batch(args);
+        assert!(spec.args.contains(&"--concurrency".to_string()));
+        assert!(spec.args.contains(&"1".to_string()));
+        assert!(spec.args.contains(&"--rate-limit".to_string()));
+        assert!(spec.args.contains(&"20".to_string()));
+    }
+
+    #[test]
+    fn builds_batch_stealth_mode_preserves_explicit_concurrency() {
+        let mut args = batch_args();
+        args.queries = strings(&["rust"]);
+        args.stealth_mode = Some(StealthMode::On);
+        args.concurrency = Some(3);
+        let spec = batch(args);
+        assert!(spec.args.contains(&"--concurrency".to_string()));
+        assert!(spec.args.contains(&"3".to_string()));
+    }
+
+    #[test]
+    fn builds_batch_with_profile_override() {
+        let mut args = batch_args();
+        args.queries = strings(&["rust"]);
+        args.profile = Some("work".to_string());
+        let spec = batch(args);
+        assert_eq!(spec.profile_override, Some("work".to_string()));
+    }
+
+    #[tokio::test]
+    async fn stealth_runner_adds_jitter_delay() {
+        let dir = tempdir().expect("tempdir");
+        let script = write_fixture(
+            dir.path(),
+            "#!/usr/bin/env bash\nprintf '{\"ok\":true}\\n'\n",
+        );
+        let runner = CliRunner::new_stealthy(script, Duration::from_secs(5));
+        let start = Instant::now();
+        let output = runner
+            .run(CommandSpec {
+                args: strings(&["search", "rust"]),
+                stdin: None,
+                output_mode: OutputMode::Json,
+                profile_override: None,
+            })
+            .await
+            .expect("should succeed");
+        let elapsed = start.elapsed();
+        // Jitter is 1ms base + 0-1ms spread, so it should complete fast but with some delay.
+        assert!(elapsed.as_millis() < 500);
+        assert!(matches!(output, CommandOutput::Json(_)));
+    }
+
+    #[test]
+    fn apply_privacy_mode_defaults_no_region() {
+        let mut region = None;
+        let mut no_personalized = None;
+        apply_privacy_mode(
+            Some(PrivacyMode::Unpersonalized),
+            &mut region,
+            None,
+            &mut no_personalized,
+            true,
+        );
+        assert_eq!(region, Some("no_region".to_string()));
+        assert_eq!(no_personalized, Some(true));
+    }
+
+    #[test]
+    fn apply_privacy_mode_respects_explicit_region() {
+        let mut region = Some("us".to_string());
+        let mut no_personalized = None;
+        apply_privacy_mode(
+            Some(PrivacyMode::Unpersonalized),
+            &mut region,
+            None,
+            &mut no_personalized,
+            true,
+        );
+        assert_eq!(region, Some("us".to_string()));
+    }
+
+    #[test]
+    fn apply_privacy_mode_respects_explicit_personalized() {
+        let mut region = None;
+        let mut no_personalized = None;
+        apply_privacy_mode(
+            Some(PrivacyMode::Unpersonalized),
+            &mut region,
+            Some(true),
+            &mut no_personalized,
+            true,
+        );
+        assert_eq!(region, Some("no_region".to_string()));
+        // When personalized is explicitly true, don't add no-personalized.
+        assert_eq!(no_personalized, None);
+    }
+
+    #[test]
+    fn apply_privacy_mode_none_is_noop() {
+        let mut region = None;
+        let mut no_personalized = None;
+        apply_privacy_mode(None, &mut region, None, &mut no_personalized, true);
+        assert_eq!(region, None);
+        assert_eq!(no_personalized, None);
     }
 }
