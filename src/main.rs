@@ -822,6 +822,23 @@ struct CompletionArgs {
     shell: String,
 }
 
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct SkillGetArgs {
+    /// Embedded skill name. Defaults to the core `kagi` skill.
+    #[serde(default)]
+    name: Option<String>,
+    /// Print the full skill body without frontmatter.
+    #[serde(default)]
+    full: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+struct SkillPathArgs {
+    /// Embedded skill name. Omit to print the embedded skill root locator.
+    #[serde(default)]
+    name: Option<String>,
+}
+
 #[derive(Clone)]
 struct KagiServer {
     runner: CliRunner,
@@ -1490,6 +1507,32 @@ impl KagiServer {
     ) -> Result<CallToolResult, McpError> {
         Ok(self.execute(generate_completion(args)).await)
     }
+
+    #[tool(description = "Load the core embedded kagi-cli agent usage guide.")]
+    async fn kagi_agent(&self) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(agent()).await)
+    }
+
+    #[tool(description = "List embedded kagi-cli skills available from the wrapped CLI.")]
+    async fn kagi_skills_list(&self) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(skills_list()).await)
+    }
+
+    #[tool(description = "Load an embedded, version-matched kagi-cli skill.")]
+    async fn kagi_skills_get(
+        &self,
+        Parameters(args): Parameters<SkillGetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(skills_get(args)).await)
+    }
+
+    #[tool(description = "Print the embedded kagi-cli skill locator.")]
+    async fn kagi_skills_path(
+        &self,
+        Parameters(args): Parameters<SkillPathArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self.execute(skills_path(args)).await)
+    }
 }
 
 #[tool_handler]
@@ -2150,6 +2193,35 @@ fn generate_completion(args: CompletionArgs) -> CommandSpec {
     )
 }
 
+fn agent() -> CommandSpec {
+    command_spec(vec!["agent".to_string()], OutputMode::Text)
+}
+
+fn skills_list() -> CommandSpec {
+    command_spec(
+        vec!["skills".to_string(), "list".to_string()],
+        OutputMode::Text,
+    )
+}
+
+fn skills_get(args: SkillGetArgs) -> CommandSpec {
+    let mut argv = vec![
+        "skills".to_string(),
+        "get".to_string(),
+        args.name.unwrap_or_else(|| "kagi".to_string()),
+    ];
+    push_opt_flag(&mut argv, "--full", args.full);
+    command_spec(argv, OutputMode::Text)
+}
+
+fn skills_path(args: SkillPathArgs) -> CommandSpec {
+    let mut argv = vec!["skills".to_string(), "path".to_string()];
+    if let Some(name) = args.name {
+        argv.push(name);
+    }
+    command_spec(argv, OutputMode::Text)
+}
+
 fn command_spec(args: Vec<String>, output_mode: OutputMode) -> CommandSpec {
     CommandSpec {
         args,
@@ -2590,6 +2662,51 @@ mod tests {
                 args: strings(&["batch", "rust", "zig", "--format", "toon"]),
                 stdin: None,
                 output_mode: OutputMode::Toon,
+                profile_override: None,
+            }
+        );
+    }
+
+    #[test]
+    fn builds_agent_skill_commands() {
+        assert_eq!(
+            agent(),
+            CommandSpec {
+                args: strings(&["agent"]),
+                stdin: None,
+                output_mode: OutputMode::Text,
+                profile_override: None,
+            }
+        );
+        assert_eq!(
+            skills_list(),
+            CommandSpec {
+                args: strings(&["skills", "list"]),
+                stdin: None,
+                output_mode: OutputMode::Text,
+                profile_override: None,
+            }
+        );
+        assert_eq!(
+            skills_get(SkillGetArgs {
+                name: None,
+                full: Some(true),
+            }),
+            CommandSpec {
+                args: strings(&["skills", "get", "kagi", "--full"]),
+                stdin: None,
+                output_mode: OutputMode::Text,
+                profile_override: None,
+            }
+        );
+        assert_eq!(
+            skills_path(SkillPathArgs {
+                name: Some("kagi".to_string()),
+            }),
+            CommandSpec {
+                args: strings(&["skills", "path", "kagi"]),
+                stdin: None,
+                output_mode: OutputMode::Text,
                 profile_override: None,
             }
         );

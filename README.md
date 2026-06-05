@@ -149,6 +149,10 @@ Optional environment variables:
 | `kagi_watch` | Run `kagi watch`; pass a finite `count` to keep the MCP request bounded |
 | `kagi_notify` | Run a search or news fetch and post the JSON payload to a webhook |
 | `kagi_generate_completion` | Generate a shell completion script for bash, zsh, fish, or PowerShell |
+| `kagi_agent` | Load the core embedded kagi-cli agent usage guide |
+| `kagi_skills_list` | List embedded, version-matched kagi-cli skills |
+| `kagi_skills_get` | Load an embedded kagi-cli skill, defaulting to `kagi` |
+| `kagi_skills_path` | Print the embedded skill root or skill locator |
 
 ### Account Settings
 
@@ -207,6 +211,8 @@ The wrapped CLI's `kagi mcp` subcommand is not exposed as a tool because this bi
 | `kagi_history_list/stats` | | | | yes |
 | `kagi_site_pref_*` | | | | yes |
 | `kagi_generate_completion` | | | | yes |
+| `kagi_agent` | | | | yes |
+| `kagi_skills_*` | | | | yes |
 | `kagi_auth_status/check/set` | | | | yes |
 
 ## Architecture
