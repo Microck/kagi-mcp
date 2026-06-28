@@ -1,5 +1,11 @@
 # kagi-mcp
 
+> ## Deprecation notice
+>
+> This repository is no longer maintained. If you want an MCP server for
+> `kagi-cli`, use the built-in `kagi mcp` command instead — see the docs at
+> <https://kagi.micr.dev/commands/mcp>.
+
 `kagi-mcp` is a tiny MCP server built on top of [`kagi-cli`](https://github.com/Microck/kagi-cli).
 
 It is intentionally just an extra repo:
